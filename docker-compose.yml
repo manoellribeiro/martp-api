@@ -1,0 +1,58 @@
+# Local development services. Run `docker compose up -d`, then `./gradlew run`.
+# Credentials here are for local use only and match the defaults in application.yaml.
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: martp
+      POSTGRES_USER: martp
+      POSTGRES_PASSWORD: martp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U martp -d martp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # S3-compatible storage standing in for Cloudflare R2 (MinIO is archived).
+  # S3 API on :9000, web console on :9001.
+  rustfs:
+    image: rustfs/rustfs:latest
+    restart: unless-stopped
+    command: /data
+    environment:
+      RUSTFS_ACCESS_KEY: martp-local
+      RUSTFS_SECRET_KEY: martp-local-secret
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - rustfs-data:/data
+
+  # Creates the bucket once and makes its objects publicly readable, like the public R2 bucket.
+  storage-init:
+    image: amazon/aws-cli:latest
+    depends_on:
+      - rustfs
+    environment:
+      AWS_ACCESS_KEY_ID: martp-local
+      AWS_SECRET_ACCESS_KEY: martp-local-secret
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until aws --endpoint-url http://rustfs:9000 s3 ls >/dev/null 2>&1; do sleep 1; done
+        aws --endpoint-url http://rustfs:9000 s3 mb s3://map-arts 2>/dev/null || true
+        aws --endpoint-url http://rustfs:9000 s3api put-bucket-policy --bucket map-arts --policy '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::map-arts/*"]}]}'
+        echo "Bucket map-arts ready"
+
+volumes:
+  postgres-data:
+  rustfs-data:
