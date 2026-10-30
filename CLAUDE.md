@@ -2,7 +2,11 @@
 
 Project context for Claude Code. Keep this file short and current. When we make a new decision, add it under "Decisions log".
 
-Architecture, layers, Koin, errors, outside-API services and test conventions are general and live in the **`ktor-layered-api` skill** (`.claude/skills/ktor-layered-api/SKILL.md`). Load it before writing or reviewing code. This file only holds what is specific to Martp API.
+Architecture, layers, Koin, errors, outside-API services and test conventions are general and live in the **`ktor-layered-api` skill**, imported here so every session follows it:
+
+@.claude/skills/ktor-layered-api/SKILL.md
+
+The rest of this file only holds what is specific to Martp API. When the two disagree, this file wins.
 
 ## Project overview
 
@@ -135,6 +139,7 @@ Example: an art with (`a@x.com`, `null`) creates user 1. A later art with (`a@x.
 How it is enforced:
 - The database has a unique index `(email, username) NULLS NOT DISTINCT WHERE NOT is_deleted` and a `CHECK` that at least one of them is present. Only users that are not deleted are matched, so a deleted user's pair creates a new user.
 - Saving an art runs in **one transaction**: insert the user with `ON CONFLICT DO NOTHING` (Exposed `insertIgnore`), then select its id with `isNotDistinctFrom` on both columns and `is_deleted = false` (never `eq`, which doesn't match nulls the same way), then insert the art. Two uploads arriving at the same time can't create duplicate users.
+- That transaction runs at `READ COMMITTED`: at the pool's `REPEATABLE READ`, `ON CONFLICT DO NOTHING` fails with a serialization error when a concurrent upload just created the same user.
 - When reading, an art with `artist_id = null`, or whose user is deleted, returns `user: null`. The exhibition shows it as anonymous.
 
 ## Validation
@@ -161,6 +166,7 @@ The apps already trim input and validate the email before sending. The API is pu
   UPDATE map_arts SET is_approved_for_the_exhibition = true WHERE id = '<art id>';
   ```
 - Endpoints that feed the exhibition must only return arts that are approved and not deleted. Usernames are only ever public through approved arts.
+- The exhibition receives only the artist's `username`, never the email. The email is internal: it's for thank-you messages and news about the project. The query for the exhibition doesn't even select it.
 - Removing an art from the exhibition: set `is_approved_for_the_exhibition = false`, or `is_deleted = true` to delete it.
 
 ## Image storage
@@ -168,6 +174,13 @@ The apps already trim input and validate the email before sending. The API is pu
 - Production: a public **Cloudflare R2** bucket (free tier: 10 GB, 1M writes and 10M reads a month, free egress). Local: **RustFS** from `docker-compose.yml`, whose `storage-init` service creates the `map-arts` bucket with public read.
 - One S3 client config for both, from `storage.*` in `application.yaml`. R2: endpoint `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`, region `auto`, `forcePathStyle = false`. RustFS: `forcePathStyle = true`.
 - Object key: `<artId>.png`.
+
+## Saving an art
+
+1. If the id already exists (even on a deleted art), answer `409`. This comes first because uploading would overwrite that art's image.
+2. Upload the image.
+3. Insert the user and the art in one transaction.
+4. If the insert fails, delete the uploaded image. If it fails because another request just saved the same id, keep the image: it belongs to that art.
 
 ## Geocoding (Nominatim)
 
@@ -227,3 +240,5 @@ export FIREBASE_PROJECT_NUMBER=... FIREBASE_ALLOWED_APP_IDS=...
 - No public endpoint: Firebase App Check on every route (Play Integrity on Android, reCAPTCHA on the web, with the text line instead of the badge). No signed image URLs.
 - Reverse geocoding serves both apps. No address at all is a specific failure (`AddressNotFoundFailure`, 404), not an empty `200`.
 - A 5xx `Failure` is logged where it's created, and every 4xx at warn level in `StatusPages`/`Security.kt`, so each error is logged once and 5xx errors keep their original stack trace.
+- The exhibition list returns every approved art at once, newest first. Paging and filters come when we understand the exhibition better.
+- An interface and its implementation never share a file (`MapArtsDao.kt` and `MapArtsDaoImpl.kt`). The rule is in the `ktor-layered-api` skill.

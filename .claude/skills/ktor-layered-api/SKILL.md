@@ -63,6 +63,8 @@ A request flows **Routes → Controller → Repository → (DAO | Service)**. Ea
 
 Name pairs `XController` / `XControllerImpl`, `XRepository` / `XRepositoryImpl`, `XDao` / `XDaoImpl`, `XService` / `XServiceImpl`.
 
+**The interface and its implementation always live in separate files** (`XDao.kt` and `XDaoImpl.kt`, in the same package). Helpers used only by the implementation, like row mappers, go in the implementation's file. The snippets below show both together only to keep them short.
+
 ### 3.1 Routes (presentation)
 
 Only HTTP: paths, path/query parameters, reading the body, choosing the success status, responding. No validation rules, no business logic, no `try/catch`.
@@ -227,7 +229,8 @@ private fun ResultRow.toBookEntity() = BookEntity(
 - `uuid()` columns use `kotlin.uuid.Uuid`. Depending on the Kotlin version this needs `@OptIn(ExperimentalUuidApi::class)`.
 - JDBC blocks a thread: always run `suspendTransaction` inside `withContext(Dispatchers.IO)`.
 - Work that must be atomic across tables (insert A, then B that references A) goes in **one DAO method with one transaction**, not in the repository calling two DAOs.
-- Compare nullable columns with `isNotDistinctFrom`, not `eq`, when `null` must match `null`.
+- Compare nullable columns with `isNotDistinctFrom`, not `eq`, when `null` must match `null`. For a nullable value use `column isNotDistinctFrom QueryParameter(value, column.columnType)`.
+- "Insert if missing, then select" (`insertIgnore` + `select`) must run at `READ COMMITTED` (`suspendTransaction(db = ..., transactionIsolation = Connection.TRANSACTION_READ_COMMITTED)`). At `REPEATABLE READ`, `ON CONFLICT DO NOTHING` fails with a serialization error when a concurrent request just inserted the same row.
 - Prefer database constraints (unique, check, foreign keys) for invariants. They also protect against concurrent requests.
 
 `AppDatabase` (in `core/data/database/`) builds the HikariCP pool (`isAutoCommit = false`, since Exposed manages transactions), runs `Flyway.configure().dataSource(ds).load().migrate()`, then `Database.connect(ds)`. It's connected from `core/plugins/Database.kt` and closed on `ApplicationStopped`.
@@ -332,7 +335,7 @@ fun createS3Client(config: StorageConfig): S3Client = S3Client {
 }
 ```
 
-The storage service uploads with `putObject` (bucket, key, `ByteStream.fromBytes(bytes)`, `contentType`) and returns the **object key**. Store the key in the database, not the URL, and build the public URL when reading (`publicBaseUrl + "/" + key`). If the database write fails after an upload, delete the object (or accept orphans and clean them up later), and say which in `CLAUDE.md`.
+The storage service uploads with `putObject` (bucket, key, `ByteStream.fromBytes(bytes)`, `contentType`) and returns the **object key**. Store the key in the database, not the URL, and build the public URL when reading (`publicBaseUrl + "/" + key`). If the database write fails after an upload, delete the object (or accept orphans and clean them up later), and say which in `CLAUDE.md`. If the key comes from a client-sent id, check that the id is free before uploading, otherwise the upload overwrites the existing object.
 
 ## 4. Dependency injection (Koin)
 
@@ -380,7 +383,8 @@ class ValidationFailure(messageToClient: String) :
 ```
 
 - One class per meaningful error in `core/models/failures/` (`ValidationFailure` 400, `NotFoundFailure` 404, `ConflictFailure` 409, `<Provider>ApiErrorFailure` 502, `DatabaseErrorFailure` 500, `UnknownErrorFailure` 500).
-- `core/plugins/StatusPages.kt` is the only place that answers errors. It responds `ErrorResponse(error = failure.errorCode, message = failure.messageToClient)` for `Failure`, 400 for Ktor's `BadRequestException` (malformed body), and logs + 500 for any other `Throwable`. It also handles 404 for unknown paths.
+- `core/plugins/StatusPages.kt` is the only place that answers errors. It responds `ErrorResponse(error = failure.errorCode, message = failure.messageToClient)` for `Failure`, 400 for Ktor's `BadRequestException` (malformed body), and logs + 500 for any other `Throwable`. It also handles 404 for unknown paths. Clients detect a specific failure by `error`, not by status alone: an unknown path also answers 404.
+- `messageToClient` never contains what the user sent: name the field and the rule, not the value.
 - Always rethrow `CancellationException`.
 
 ## 7. Protecting an API without user login
@@ -423,10 +427,12 @@ routing {
 ```kotlin
 interface ErrorLogger {
     fun logNonFatal(throwable: Throwable, operation: String)
+    fun logClientError(errorCode: String, message: String, operation: String)
 }
 ```
 
-- Every handled exception that is not a client error is logged once, where it is converted into a `Failure` (repository/service), or in `StatusPages` for unexpected ones.
+- Every handled exception that is not a client error goes to `logNonFatal` once, where it is converted into a `Failure` (repository/service), or in `StatusPages` for unexpected ones. `StatusPages` doesn't log 5xx `Failure`s again: that entry would be a duplicate without the original stack trace.
+- Every 4xx goes to `logClientError` at warn level, without a stack trace, to observe expected errors: `Failure`s, malformed requests and unknown paths in `StatusPages`, rejected tokens in the authentication `challenge`. Its `operation` is the method and path (`"POST /books"`), never the query string. For malformed requests, log a fixed text: Ktor's exception message can quote the body.
 - `operation` = `"ClassName.methodName"`. Never put personal data (emails, names, locations, tokens) in `operation`, log messages or `messageToClient`.
 - Start with a Logback implementation. A monitoring tool (Sentry, etc.) is a new implementation + one Koin binding.
 - `CallLogging` logs method, path and status, never request or response bodies.
