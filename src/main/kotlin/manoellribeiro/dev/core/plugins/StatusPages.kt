@@ -2,9 +2,12 @@ package manoellribeiro.dev.core.plugins
 
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
 import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.request.httpMethod
+import io.ktor.server.request.path
 import io.ktor.server.response.respond
 import manoellribeiro.dev.core.logging.ErrorLogger
 import manoellribeiro.dev.core.models.ErrorResponse
@@ -21,18 +24,17 @@ fun Application.configureStatusPages() {
 
     install(StatusPages) {
         exception<Failure> { call, failure ->
-            if (failure.statusCode.value >= 500) {
-                errorLogger.logNonFatal(failure, "StatusPages.${failure.errorCode}")
+            if (failure.statusCode.value < 500) {
+                errorLogger.logClientError(failure.errorCode, failure.messageToClient, call.operationName())
             }
             call.respond(failure.statusCode, ErrorResponse(failure.errorCode, failure.messageToClient))
         }
 
         // Thrown by Ktor when the body cannot be read (malformed JSON, missing required field, ...)
         exception<BadRequestException> { call, _ ->
-            call.respond(
-                HttpStatusCode.BadRequest,
-                ErrorResponse(error = "BadRequest", message = "The request body or parameters are invalid."),
-            )
+            val message = "The request body or parameters are invalid."
+            errorLogger.logClientError("BadRequest", message, call.operationName())
+            call.respond(HttpStatusCode.BadRequest, ErrorResponse(error = "BadRequest", message = message))
         }
 
         exception<Throwable> { call, cause ->
@@ -42,7 +44,12 @@ fun Application.configureStatusPages() {
         }
 
         status(HttpStatusCode.NotFound) { call, status ->
-            call.respond(status, ErrorResponse(error = "NotFound", message = "This endpoint does not exist."))
+            val message = "This endpoint does not exist."
+            errorLogger.logClientError("NotFound", message, call.operationName())
+            call.respond(status, ErrorResponse(error = "NotFound", message = message))
         }
     }
 }
+
+// The path has no query string, so coordinates never reach the logs.
+internal fun ApplicationCall.operationName() = "${request.httpMethod.value} ${request.path()}"

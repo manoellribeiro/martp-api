@@ -13,4 +13,8 @@ class LogbackErrorLogger : ErrorLogger {
     override fun logNonFatal(throwable: Throwable, operation: String) {
         logger.error("Non-fatal in $operation", throwable)
     }
+
+    override fun logClientError(errorCode: String, message: String, operation: String) {
+        logger.warn("Client error in $operation: $errorCode - $message")
+    }
 }

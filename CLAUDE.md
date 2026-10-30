@@ -10,7 +10,7 @@ Martp API is the backend of the Martp project (Android app: https://github.com/m
 
 1. **Store every map art** created in the apps, with the user who created it, in a remote database.
 2. **Serve the approved arts** to a digital exhibition.
-3. **Reverse geocoding** for the web app (the stand-in for Android's `Geocoder`), through Nominatim.
+3. **Reverse geocoding** for both apps, through Nominatim: the web app's stand-in for Android's `Geocoder`, and Android's fallback when its `Geocoder` isn't available.
 4. **Color palettes**: the single source of the palettes used by the colorful map art style, for both apps.
 
 Out of scope for now: user login, admin endpoints, proxying Mapbox. Don't add them unless asked.
@@ -171,7 +171,11 @@ The apps already trim input and validate the email before sending. The API is pu
 
 ## Geocoding (Nominatim)
 
-- Reverse geocoding only, for the web app, through `GeocodingService` → `MartpRepository` → geocoding route.
+- Reverse geocoding only, for both apps (Android uses it when its `Geocoder` isn't available), through `GeocodingService` → `MartpRepository` → geocoding route.
+- The result has three fields, `street`, `city` and `country`, the same ones Android uses to build the default title. `city` falls back to Nominatim's `town`, then `village`.
+- The apps send their language and the API passes it to Nominatim as `accept-language`. Without it, Nominatim uses each place's local names.
+- One or two fields missing: `200` with those fields `null`. All three missing: `404` with `error = "AddressNotFoundFailure"`, which the apps detect by that name (an unknown path also answers 404).
+- Nominatim down or timing out: `502` with `NominatimApiErrorFailure`, logged.
 - Nominatim usage policy: **at most 1 request per second** (enforced inside `GeocodingService` with a `Mutex`, for the whole API), a **User-Agent that identifies the app** (`geocoding.userAgent`), and the web app must show the attribution "© OpenStreetMap contributors". Cache repeated lookups if traffic grows.
 - Map Nominatim's response to our own model in the service; never return Nominatim's JSON as is.
 
@@ -184,7 +188,9 @@ The apps already trim input and validate the email before sending. The API is pu
 ## Errors and logging
 
 - Error body for every error: `{ "error": "<FailureClassName>", "message": "<safe message>" }` (`ErrorResponse`), produced only by `core/plugins/StatusPages.kt`.
-- Every 5xx is sent to `ErrorLogger`. Never put emails, usernames or coordinates in the `operation` name, in log messages or in `messageToClient`. `CallLogging` logs method, path and status only, never bodies.
+- Every 5xx is sent to `ErrorLogger.logNonFatal` exactly once: where the exception is converted into a `Failure` (repository or service), or in `StatusPages` for unexpected exceptions.
+- Every 4xx is sent to `ErrorLogger.logClientError`, without a stack trace, to observe expected errors: `Failure`s, malformed requests and unknown paths in `StatusPages`, rejected App Check tokens in `Security.kt`. `messageToClient` must never contain what the user sent.
+- Never put emails, usernames or coordinates in the `operation` name, in log messages or in `messageToClient`. `CallLogging` logs method, path and status only, never bodies.
 - The monitoring tool is not chosen yet: `LogbackErrorLogger` is temporary. (Firebase Crashlytics doesn't support the web or the JVM, so it can't be the API's tool.) Switching = a new `ErrorLogger` implementation + one line in `core/di/Modules.kt`.
 
 ## Tests
@@ -219,3 +225,5 @@ export FIREBASE_PROJECT_NUMBER=... FIREBASE_ALLOWED_APP_IDS=...
 - Image limits: PNG, at most 1400 × 1400 px and 8 MB.
 - Color palettes come from the API (`color_palettes` table, `GET /color-palettes`). Names are never renamed; the first palette is the default; the apps keep their current list as an offline fallback.
 - No public endpoint: Firebase App Check on every route (Play Integrity on Android, reCAPTCHA on the web, with the text line instead of the badge). No signed image URLs.
+- Reverse geocoding serves both apps. No address at all is a specific failure (`AddressNotFoundFailure`, 404), not an empty `200`.
+- A 5xx `Failure` is logged where it's created, and every 4xx at warn level in `StatusPages`/`Security.kt`, so each error is logged once and 5xx errors keep their original stack trace.

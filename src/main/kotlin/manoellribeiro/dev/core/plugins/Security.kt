@@ -10,6 +10,7 @@ import io.ktor.server.auth.jwt.JWTPrincipal
 import io.ktor.server.auth.jwt.jwt
 import io.ktor.server.response.respond
 import manoellribeiro.dev.core.config.AppCheckConfig
+import manoellribeiro.dev.core.logging.ErrorLogger
 import manoellribeiro.dev.core.models.ErrorResponse
 import org.koin.ktor.ext.inject
 import java.net.URI
@@ -28,6 +29,7 @@ const val APP_CHECK_HEADER = "X-Firebase-AppCheck"
  */
 fun Application.configureSecurity() {
     val appCheckConfig by inject<AppCheckConfig>()
+    val errorLogger by inject<ErrorLogger>()
 
     val jwkProvider = JwkProviderBuilder(URI(appCheckConfig.jwksUrl).toURL())
         .cached(10, 6, TimeUnit.HOURS) // Google rotates the keys; cache them for up to 6 hours
@@ -46,10 +48,9 @@ fun Application.configureSecurity() {
                 if (credential.payload.subject in appCheckConfig.allowedAppIds) JWTPrincipal(credential.payload) else null
             }
             challenge { _, _ ->
-                call.respond(
-                    HttpStatusCode.Unauthorized,
-                    ErrorResponse(error = "InvalidAppCheckToken", message = "This client is not allowed to call the API."),
-                )
+                val message = "This client is not allowed to call the API."
+                errorLogger.logClientError("InvalidAppCheckToken", message, call.operationName())
+                call.respond(HttpStatusCode.Unauthorized, ErrorResponse(error = "InvalidAppCheckToken", message = message))
             }
         }
     }

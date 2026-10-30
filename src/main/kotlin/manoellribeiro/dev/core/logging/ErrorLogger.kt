@@ -7,4 +7,7 @@ package manoellribeiro.dev.core.logging
  */
 interface ErrorLogger {
     fun logNonFatal(throwable: Throwable, operation: String)
+
+    /** A request the API refused on purpose (4xx), to observe how often and why it happens. */
+    fun logClientError(errorCode: String, message: String, operation: String)
 }
