@@ -177,12 +177,35 @@ class MapArtValidatorTest {
     }
 
     @Test
-    fun `if email is invalid should not put it in the message`() {
+    fun `if email is invalid should keep it for the logs and not send it to the client`() {
         // When
         val failure = assertThrows<ValidationFailure> { MapArtValidator.validateEmail("fake.private.value") }
 
         // Then
         assertFalse(failure.messageToClient.contains("fake.private.value"))
+        assertEquals("email has an invalid format. Rejected value: \"fake.private.value\"", failure.message)
+    }
+
+    @Test
+    fun `if a rejected value is huge should cut it in the logs`() {
+        // Given
+        val fakeTitle = "a".repeat(ValidationLimits.MAX_TITLE_LENGTH + 500)
+
+        // When
+        val failure = assertThrows<ValidationFailure> { MapArtValidator.validateTitle(fakeTitle) }
+
+        // Then
+        val expectedValue = "a".repeat(ValidationLimits.MAX_LOGGED_VALUE_LENGTH)
+        assertEquals("title must have at most ${ValidationLimits.MAX_TITLE_LENGTH} characters. Rejected value: \"$expectedValue\"", failure.message)
+    }
+
+    @Test
+    fun `if image is rejected should not log its bytes`() {
+        // When
+        val failure = assertThrows<ValidationFailure> { MapArtValidator.validatePngImage(ByteArray(0)) }
+
+        // Then
+        assertEquals("image must be a PNG.", failure.message)
     }
 
     @Test

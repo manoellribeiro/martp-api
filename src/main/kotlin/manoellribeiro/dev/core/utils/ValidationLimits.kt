@@ -15,4 +15,7 @@ object ValidationLimits {
 
     /** A 1400 x 1400 RGBA image is 7.84 MB uncompressed, so no real art reaches this. */
     const val MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024
+
+    /** Rejected values are cut to this in the logs, so huge inputs can't flood them. */
+    const val MAX_LOGGED_VALUE_LENGTH = 300
 }

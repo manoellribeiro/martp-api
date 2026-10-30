@@ -189,7 +189,8 @@ The apps already trim input and validate the email before sending. The API is pu
 - The apps send their language and the API passes it to Nominatim as `accept-language`. Without it, Nominatim uses each place's local names.
 - One or two fields missing: `200` with those fields `null`. All three missing: `404` with `error = "AddressNotFoundFailure"`, which the apps detect by that name (an unknown path also answers 404).
 - Nominatim down or timing out: `502` with `NominatimApiErrorFailure`, logged.
-- Nominatim usage policy: **at most 1 request per second** (enforced inside `GeocodingService` with a `Mutex`, for the whole API), a **User-Agent that identifies the app** (`geocoding.userAgent`), and the web app must show the attribution "© OpenStreetMap contributors". Cache repeated lookups if traffic grows.
+- Nominatim usage policy: **at most 1 request per second** (enforced inside `GeocodingService` with a `Mutex`, for the whole API), a **User-Agent that identifies the app** (`geocoding.userAgent`), and both apps must show the attribution "© OpenStreetMap contributors" wherever they use a result from this endpoint. Cache repeated lookups if traffic grows.
+- A point without an address answers `200` with `{"error":"Unable to geocode"}` on Nominatim's side, so a successful status doesn't mean there's an address.
 - Map Nominatim's response to our own model in the service; never return Nominatim's JSON as is.
 
 ## Configuration and secrets
@@ -202,8 +203,10 @@ The apps already trim input and validate the email before sending. The API is pu
 
 - Error body for every error: `{ "error": "<FailureClassName>", "message": "<safe message>" }` (`ErrorResponse`), produced only by `core/plugins/StatusPages.kt`.
 - Every 5xx is sent to `ErrorLogger.logNonFatal` exactly once: where the exception is converted into a `Failure` (repository or service), or in `StatusPages` for unexpected exceptions.
-- Every 4xx is sent to `ErrorLogger.logClientError`, without a stack trace, to observe expected errors: `Failure`s, malformed requests and unknown paths in `StatusPages`, rejected App Check tokens in `Security.kt`. `messageToClient` must never contain what the user sent.
-- Never put emails, usernames or coordinates in the `operation` name, in log messages or in `messageToClient`. `CallLogging` logs method, path and status only, never bodies.
+- Every 4xx is sent to `ErrorLogger.logClientError`, without a stack trace, to observe expected errors: `Failure`s, malformed requests and unknown paths in `StatusPages`, rejected App Check tokens in `Security.kt`.
+- Logs are for solving production problems, so they may carry user data: coordinates, query strings, and the value of any field that failed validation (`ValidationFailure.rejectedValue`, cut to 300 characters). Emails and usernames that pass validation are not logged. Images are never logged.
+- `messageToClient` never contains what the user sent.
+- `CallLogging` logs method, path and status only, never bodies.
 - The monitoring tool is not chosen yet: `LogbackErrorLogger` is temporary. (Firebase Crashlytics doesn't support the web or the JVM, so it can't be the API's tool.) Switching = a new `ErrorLogger` implementation + one line in `core/di/Modules.kt`.
 
 ## Tests
@@ -244,3 +247,4 @@ export FIREBASE_PROJECT_NUMBER=... FIREBASE_ALLOWED_APP_IDS=...
 - No `description` in the API: it's deprecated on Android and unused. An app that still sends it is ignored.
 - An empty title is accepted, and the exhibition shows it as "Unknown Location".
 - Maximum text lengths: email 254, username 100, title 300.
+- Logs may carry user data to solve production problems (coordinates, query strings, rejected values). Treat access to them and how long they're kept with the same care as the database.

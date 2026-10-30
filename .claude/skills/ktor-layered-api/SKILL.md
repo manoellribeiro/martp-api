@@ -332,6 +332,9 @@ fun createS3Client(config: StorageConfig): S3Client = S3Client {
     credentialsProvider = StaticCredentialsProvider(
         Credentials(accessKeyId = config.accessKey, secretAccessKey = config.secretKey)
     )
+    // The SDK's default checksums are an AWS feature that S3-compatible servers don't all support
+    requestChecksumCalculation = RequestHttpChecksumConfig.WHEN_REQUIRED
+    responseChecksumValidation = ResponseHttpChecksumConfig.WHEN_REQUIRED
 }
 ```
 

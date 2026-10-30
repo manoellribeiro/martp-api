@@ -5,7 +5,7 @@ import manoellribeiro.dev.core.models.failures.ValidationFailure
 import java.nio.ByteBuffer
 import kotlin.uuid.Uuid
 
-/** The rules for saving an art. Input is rejected, never fixed. Messages never contain what the user sent. */
+/** The rules for saving an art. Input is rejected, never fixed. Rejected values go to the logs, never to the client. */
 object MapArtValidator {
     private val EMAIL_FORMAT = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
     private val HEX_COLOR_FORMAT = Regex("^#[0-9A-F]{6}$")
@@ -19,12 +19,12 @@ object MapArtValidator {
     private const val PNG_MIN_HEADER_SIZE = 24
 
     fun parseId(id: String): Uuid =
-        Uuid.parseHexDashOrNull(id) ?: throw ValidationFailure("id must be a valid UUID.")
+        Uuid.parseHexDashOrNull(id) ?: throw ValidationFailure("id must be a valid UUID.", rejectedValue = id)
 
     fun validateEmail(email: String?) {
         if (email == null) return
         validateOptionalText(field = "email", value = email, maxLength = ValidationLimits.MAX_EMAIL_LENGTH)
-        if (!EMAIL_FORMAT.matches(email)) throw ValidationFailure("email has an invalid format.")
+        if (!EMAIL_FORMAT.matches(email)) throw ValidationFailure("email has an invalid format.", rejectedValue = email)
     }
 
     fun validateUsername(username: String?) {
@@ -34,34 +34,34 @@ object MapArtValidator {
 
     /** May be empty: the title comes from the address, and some coordinates don't have one. */
     fun validateTitle(title: String) {
-        if (title != title.trim()) throw ValidationFailure("title must not have leading or trailing whitespace.")
+        if (title != title.trim()) throw ValidationFailure("title must not have leading or trailing whitespace.", rejectedValue = title)
         if (title.length > ValidationLimits.MAX_TITLE_LENGTH) {
-            throw ValidationFailure("title must have at most ${ValidationLimits.MAX_TITLE_LENGTH} characters.")
+            throw ValidationFailure("title must have at most ${ValidationLimits.MAX_TITLE_LENGTH} characters.", rejectedValue = title)
         }
     }
 
     fun validateCoordinates(latitude: Double, longitude: Double) {
         if (latitude !in ValidationLimits.MIN_LATITUDE..ValidationLimits.MAX_LATITUDE) {
-            throw ValidationFailure("latitude must be between ${ValidationLimits.MIN_LATITUDE} and ${ValidationLimits.MAX_LATITUDE}.")
+            throw ValidationFailure("latitude must be between ${ValidationLimits.MIN_LATITUDE} and ${ValidationLimits.MAX_LATITUDE}.", rejectedValue = latitude)
         }
         if (longitude !in ValidationLimits.MIN_LONGITUDE..ValidationLimits.MAX_LONGITUDE) {
-            throw ValidationFailure("longitude must be between ${ValidationLimits.MIN_LONGITUDE} and ${ValidationLimits.MAX_LONGITUDE}.")
+            throw ValidationFailure("longitude must be between ${ValidationLimits.MIN_LONGITUDE} and ${ValidationLimits.MAX_LONGITUDE}.", rejectedValue = longitude)
         }
     }
 
     fun validateDateInMillis(dateInMillis: Long) {
-        if (dateInMillis <= 0) throw ValidationFailure("dateInMillis must be greater than 0.")
+        if (dateInMillis <= 0) throw ValidationFailure("dateInMillis must be greater than 0.", rejectedValue = dateInMillis)
     }
 
     fun parseSketchArtType(sketchArtType: String?): SketchArtType? {
         if (sketchArtType == null) return null
         return SketchArtType.entries.firstOrNull { it.name == sketchArtType }
-            ?: throw ValidationFailure("sketchArtType must be one of ${SketchArtType.entries.joinToString()}.")
+            ?: throw ValidationFailure("sketchArtType must be one of ${SketchArtType.entries.joinToString()}.", rejectedValue = sketchArtType)
     }
 
     fun validateLayerColor(field: String, color: String?) {
         if (color != null && !HEX_COLOR_FORMAT.matches(color)) {
-            throw ValidationFailure("$field must be an uppercase #RRGGBB color.")
+            throw ValidationFailure("$field must be an uppercase #RRGGBB color.", rejectedValue = color)
         }
     }
 
@@ -80,9 +80,9 @@ object MapArtValidator {
     }
 
     private fun validateOptionalText(field: String, value: String, maxLength: Int) {
-        if (value.isBlank()) throw ValidationFailure("$field must not be blank.")
-        if (value != value.trim()) throw ValidationFailure("$field must not have leading or trailing whitespace.")
-        if (value.length > maxLength) throw ValidationFailure("$field must have at most $maxLength characters.")
+        if (value.isBlank()) throw ValidationFailure("$field must not be blank.", rejectedValue = value)
+        if (value != value.trim()) throw ValidationFailure("$field must not have leading or trailing whitespace.", rejectedValue = value)
+        if (value.length > maxLength) throw ValidationFailure("$field must have at most $maxLength characters.", rejectedValue = value)
     }
 
     private fun ByteArray.hasPngHeader(): Boolean =

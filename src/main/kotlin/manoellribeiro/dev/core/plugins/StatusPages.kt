@@ -7,7 +7,7 @@ import io.ktor.server.application.install
 import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.httpMethod
-import io.ktor.server.request.path
+import io.ktor.server.request.uri
 import io.ktor.server.response.respond
 import manoellribeiro.dev.core.logging.ErrorLogger
 import manoellribeiro.dev.core.models.ErrorResponse
@@ -25,7 +25,7 @@ fun Application.configureStatusPages() {
     install(StatusPages) {
         exception<Failure> { call, failure ->
             if (failure.statusCode.value < 500) {
-                errorLogger.logClientError(failure.errorCode, failure.messageToClient, call.operationName())
+                errorLogger.logClientError(failure.errorCode, failure.message ?: failure.messageToClient, call.operationName())
             }
             call.respond(failure.statusCode, ErrorResponse(failure.errorCode, failure.messageToClient))
         }
@@ -51,5 +51,5 @@ fun Application.configureStatusPages() {
     }
 }
 
-// The path has no query string, so coordinates never reach the logs.
-internal fun ApplicationCall.operationName() = "${request.httpMethod.value} ${request.path()}"
+// With the query string: for a lookup, that is the point that failed.
+internal fun ApplicationCall.operationName() = "${request.httpMethod.value} ${request.uri}"
