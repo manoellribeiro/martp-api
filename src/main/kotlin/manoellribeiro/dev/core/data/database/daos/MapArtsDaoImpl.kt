@@ -47,7 +47,6 @@ class MapArtsDaoImpl(
             val insertedCount = MapArtsTable.insertIgnore {
                 it[id] = mapArt.id
                 it[title] = mapArt.title
-                it[description] = mapArt.description
                 it[latitude] = mapArt.latitude
                 it[longitude] = mapArt.longitude
                 it[dateInMillis] = mapArt.dateInMillis
@@ -102,7 +101,6 @@ class MapArtsDaoImpl(
 private fun ResultRow.toMapArtEntity() = MapArtEntity(
     id = this[MapArtsTable.id],
     title = this[MapArtsTable.title],
-    description = this[MapArtsTable.description],
     latitude = this[MapArtsTable.latitude],
     longitude = this[MapArtsTable.longitude],
     dateInMillis = this[MapArtsTable.dateInMillis],

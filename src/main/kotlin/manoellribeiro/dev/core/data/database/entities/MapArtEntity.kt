@@ -6,7 +6,6 @@ import kotlin.uuid.Uuid
 data class MapArtEntity(
     val id: Uuid,
     val title: String,
-    val description: String?,
     val latitude: Double,
     val longitude: Double,
     val dateInMillis: Long,
@@ -22,7 +21,6 @@ data class MapArtEntity(
 data class NewMapArtEntity(
     val id: Uuid,
     val title: String,
-    val description: String?,
     val latitude: Double,
     val longitude: Double,
     val dateInMillis: Long,

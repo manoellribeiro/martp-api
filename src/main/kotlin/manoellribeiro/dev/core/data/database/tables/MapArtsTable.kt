@@ -6,7 +6,6 @@ import org.jetbrains.exposed.v1.core.Table
 object MapArtsTable : Table("map_arts") {
     val id = uuid("id")
     val title = text("title")
-    val description = text("description").nullable()
     val latitude = double("latitude")
     val longitude = double("longitude")
     val dateInMillis = long("date_in_millis")
