@@ -12,7 +12,7 @@ interface MapArtsDao {
      * Saves the art and its user (matched by the pair, or created) in one transaction.
      * Returns false, saving nothing, if another art already has this id.
      */
-    suspend fun insertWithUser(mapArt: NewMapArtEntity, email: String?, username: String?): Boolean
+    suspend fun insertWithUser(mapArt: NewMapArtEntity, imageKey: String, email: String?, username: String?): Boolean
 
     suspend fun getApprovedForExhibition(): List<ExhibitionMapArtEntity>
 }

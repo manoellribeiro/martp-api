@@ -17,14 +17,13 @@ data class MapArtEntity(
     val isApprovedForTheExhibition: Boolean,
 )
 
-/** An art about to be saved: the database decides its artist and approval. */
+/** An art about to be saved: the database decides its artist and approval, the repository its image key. */
 data class NewMapArtEntity(
     val id: Uuid,
     val title: String,
     val latitude: Double,
     val longitude: Double,
     val dateInMillis: Long,
-    val imageKey: String,
     val sketchArtType: SketchArtType?,
     val colorPalette: String?,
     val colorsLayers: MapLayersColorsEntity,

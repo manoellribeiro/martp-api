@@ -37,6 +37,7 @@ class MapArtsDaoImpl(
 
     override suspend fun insertWithUser(
         mapArt: NewMapArtEntity,
+        imageKey: String,
         email: String?,
         username: String?,
     ): Boolean = withContext(Dispatchers.IO) {
@@ -50,7 +51,7 @@ class MapArtsDaoImpl(
                 it[latitude] = mapArt.latitude
                 it[longitude] = mapArt.longitude
                 it[dateInMillis] = mapArt.dateInMillis
-                it[imageKey] = mapArt.imageKey
+                it[MapArtsTable.imageKey] = imageKey
                 it[sketchArtType] = mapArt.sketchArtType
                 it[colorPalette] = mapArt.colorPalette
                 it[mapLayerRoadsColor] = mapArt.colorsLayers.roadsColor
