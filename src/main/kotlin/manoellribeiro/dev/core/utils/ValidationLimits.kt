@@ -5,6 +5,8 @@ object ValidationLimits {
     const val MAX_USERNAME_LENGTH = 100
     const val MAX_TITLE_LENGTH = 300
 
+    const val MAX_LANGUAGE_LENGTH = 35
+
     const val MIN_LATITUDE = -90.0
     const val MAX_LATITUDE = 90.0
     const val MIN_LONGITUDE = -180.0
@@ -15,6 +17,9 @@ object ValidationLimits {
 
     /** A 1400 x 1400 RGBA image is 7.84 MB uncompressed, so no real art reaches this. */
     const val MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024
+
+    // A whole POST /map-arts body: the image plus room for the art JSON and the multipart headers
+    const val MAX_MAP_ART_UPLOAD_BYTES = MAX_IMAGE_SIZE_BYTES + 64 * 1024L
 
     /** Rejected values are cut to this in the logs, so huge inputs can't flood them. */
     const val MAX_LOGGED_VALUE_LENGTH = 300

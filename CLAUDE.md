@@ -177,16 +177,40 @@ The apps already trim input and validate the email before sending. The API is pu
 
 ## Saving an art
 
+Endpoint: `POST /map-arts`, multipart with two parts, answering `201` with no body (the apps already have the id, and the art isn't public until approved):
+- `art`: JSON with `id`, `title`, `latitude`, `longitude`, `dateInMillis`, and the optional `sketchArtType`, `colorPalette`, `colorsLayers` (`roadsColor`, `buildingStrokeColor`, `buildingColor`, `roadsPathColor`, `waterColor`, `landOthersColor`), `email`, `username`.
+- `image`: the PNG bytes.
+
+The route reads the parts in `MapArtsRoutes.kt`:
+- A `Content-Length` over **8 MB + 64 KB** (`MAX_MAP_ART_UPLOAD_BYTES`) answers `400` before anything is read. Ktor's own part limit fails the call with a `500`, so it's only the backstop for a chunked body without `Content-Length`.
+- `art` may come as a text field or as a file part (a `Blob` on the web). Invalid JSON, a missing field or a wrong type answers `400 BadRequest`. A missing `art` or `image` part answers `400 ValidationFailure`.
+- A body that isn't multipart answers `415` with `error = "UnsupportedMediaType"`.
+
+`MapArtsController` runs every validation before touching the repository. The `colorPalette` check comes last because it's the only one that reads the database, and the name must match exactly (case included).
+
 1. If the id already exists (even on a deleted art), answer `409`. This comes first because uploading would overwrite that art's image.
 2. Upload the image.
 3. Insert the user and the art in one transaction.
 4. If the insert fails, delete the uploaded image. If it fails because another request just saved the same id, keep the image: it belongs to that art.
 
+## Exhibition
+
+`GET /map-arts/exhibition` answers `200` with every approved art that isn't deleted, newest first (`date_in_millis`):
+```json
+{ "mapArts": [ { "id": "...", "title": "Unknown Location", "latitude": 48.8584, "longitude": 2.2945, "dateInMillis": 1790000000000,
+  "imageUrl": "https://.../<id>.png", "sketchArtType": "COLORFUL_MAP", "colorPalette": "Martp",
+  "colorsLayers": { "roadsColor": "#AABBCC", "buildingStrokeColor": null, "...": "..." }, "user": { "username": "mano" } } ] }
+```
+- An empty title is returned as `"Unknown Location"`.
+- `user` is `null` when the art is anonymous, or its user is deleted or has no username. Never the email.
+- Missing optional fields are sent as `null`, not left out.
+
 ## Geocoding (Nominatim)
 
 - Reverse geocoding only, for both apps (Android uses it when its `Geocoder` isn't available), through `GeocodingService` → `MartpRepository` → geocoding route.
 - The result has three fields, `street`, `city` and `country`, the same ones Android uses to build the default title. `city` falls back to Nominatim's `town`, then `village`.
-- The apps send their language and the API passes it to Nominatim as `accept-language`. Without it, Nominatim uses each place's local names.
+- Endpoint: `GET /geocoding/reverse?latitude=..&longitude=..&language=pt-BR`, answering `200` with `{ "street": ..., "city": ..., "country": ... }`. A missing, non-numeric or out-of-range coordinate answers `400`.
+- The apps send their language and the API passes it to Nominatim as `accept-language`. Without it, Nominatim uses each place's local names. An invalid language (not just letters, digits and hyphens, or over 35 characters) never blocks the user: the lookup uses English and the value goes to `logClientError`.
 - One or two fields missing: `200` with those fields `null`. All three missing: `404` with `error = "AddressNotFoundFailure"`, which the apps detect by that name (an unknown path also answers 404).
 - Nominatim down or timing out: `502` with `NominatimApiErrorFailure`, logged.
 - Nominatim usage policy: **at most 1 request per second** (enforced inside `GeocodingService` with a `Mutex`, for the whole API), a **User-Agent that identifies the app** (`geocoding.userAgent`), and both apps must show the attribution "© OpenStreetMap contributors" wherever they use a result from this endpoint. Cache repeated lookups if traffic grows.
@@ -203,7 +227,7 @@ The apps already trim input and validate the email before sending. The API is pu
 
 - Error body for every error: `{ "error": "<FailureClassName>", "message": "<safe message>" }` (`ErrorResponse`), produced only by `core/plugins/StatusPages.kt`.
 - Every 5xx is sent to `ErrorLogger.logNonFatal` exactly once: where the exception is converted into a `Failure` (repository or service), or in `StatusPages` for unexpected exceptions.
-- Every 4xx is sent to `ErrorLogger.logClientError`, without a stack trace, to observe expected errors: `Failure`s, malformed requests and unknown paths in `StatusPages`, rejected App Check tokens in `Security.kt`.
+- Every 4xx is sent to `ErrorLogger.logClientError`, without a stack trace, to observe expected errors: `Failure`s, malformed requests, unsupported content types and unknown paths in `StatusPages`, rejected App Check tokens in `Security.kt`.
 - Logs are for solving production problems, so they may carry user data: coordinates, query strings, and the value of any field that failed validation (`ValidationFailure.rejectedValue`, cut to 300 characters). Emails and usernames that pass validation are not logged. Images are never logged.
 - `messageToClient` never contains what the user sent.
 - `CallLogging` logs method, path and status only, never bodies.
@@ -225,7 +249,6 @@ export FIREBASE_PROJECT_NUMBER=... FIREBASE_ALLOWED_APP_IDS=...
 
 ## Open decisions
 
-- Endpoint design (paths, request/response bodies, how the image is uploaded, e.g. multipart with the art fields + PNG).
 - Hosting, and with it the API's Dockerfile.
 - Monitoring tool behind `ErrorLogger`.
 - What the exhibition is (public web page or a device/server we control), and so how it proves itself.
@@ -248,3 +271,7 @@ export FIREBASE_PROJECT_NUMBER=... FIREBASE_ALLOWED_APP_IDS=...
 - An empty title is accepted, and the exhibition shows it as "Unknown Location".
 - Maximum text lengths: email 254, username 100, title 300.
 - Logs may carry user data to solve production problems (coordinates, query strings, rejected values). Treat access to them and how long they're kept with the same care as the database.
+- An invalid geocoding language falls back to English and is logged, it never fails the request.
+- Saving an art is `POST /map-arts`, multipart with an `art` JSON part and an `image` PNG part (raw bytes, no Base64). It answers `201` with no body.
+- The exhibition is `GET /map-arts/exhibition`. It returns coordinates: the title already shows the street, and every art is approved by hand. The artist comes as `user: { username }` or `null`.
+- An upload's declared size is checked in the route (8 MB + 64 KB), because Ktor's multipart part limit answers 500. A wrong Content-Type answers 415.

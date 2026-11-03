@@ -5,12 +5,20 @@ import manoellribeiro.dev.core.models.failures.ValidationFailure
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertDoesNotThrow
 import org.junit.jupiter.api.assertThrows
 import java.nio.ByteBuffer
 
-class MapArtValidatorTest {
+class MapArtValidatorImplTest {
+
+    private lateinit var validator: MapArtValidator
+
+    @BeforeEach
+    fun setup() {
+        validator = MapArtValidatorImpl()
+    }
 
     private fun fakePng(width: Int = 100, height: Int = 100, size: Int = 24): ByteArray {
         val buffer = ByteBuffer.allocate(size)
@@ -28,7 +36,7 @@ class MapArtValidatorTest {
         val fakeId = "123e4567-e89b-12d3-a456-426614174000"
 
         // When
-        val id = MapArtValidator.parseId(fakeId)
+        val id = validator.parseId(fakeId)
 
         // Then
         assertEquals(fakeId, id.toString())
@@ -37,22 +45,22 @@ class MapArtValidatorTest {
     @Test
     fun `if id is not a UUID should throw ValidationFailure`() {
         // When / Then
-        assertThrows<ValidationFailure> { MapArtValidator.parseId("fake-id") }
+        assertThrows<ValidationFailure> { validator.parseId("fake-id") }
     }
 
     @Test
     fun `if email and username are null should accept them`() {
         // When / Then
         assertDoesNotThrow {
-            MapArtValidator.validateEmail(null)
-            MapArtValidator.validateUsername(null)
+            validator.validateEmail(null)
+            validator.validateUsername(null)
         }
     }
 
     @Test
     fun `if email has a valid format should accept it`() {
         // When / Then
-        assertDoesNotThrow { MapArtValidator.validateEmail("fake.user@example.com") }
+        assertDoesNotThrow { validator.validateEmail("fake.user@example.com") }
     }
 
     @Test
@@ -61,7 +69,7 @@ class MapArtValidatorTest {
         val fakeEmails = listOf("", "  ", " fake@example.com", "fake@example.com ", "fake", "fake@example", "a@b@c.com", "fake user@example.com")
 
         // When / Then
-        fakeEmails.forEach { assertThrows<ValidationFailure> { MapArtValidator.validateEmail(it) } }
+        fakeEmails.forEach { assertThrows<ValidationFailure> { validator.validateEmail(it) } }
     }
 
     @Test
@@ -71,8 +79,8 @@ class MapArtValidatorTest {
         val fakeLocalPart = "a".repeat(ValidationLimits.MAX_EMAIL_LENGTH - fakeDomain.length)
 
         // When / Then
-        assertDoesNotThrow { MapArtValidator.validateEmail(fakeLocalPart + fakeDomain) }
-        assertThrows<ValidationFailure> { MapArtValidator.validateEmail("a$fakeLocalPart$fakeDomain") }
+        assertDoesNotThrow { validator.validateEmail(fakeLocalPart + fakeDomain) }
+        assertThrows<ValidationFailure> { validator.validateEmail("a$fakeLocalPart$fakeDomain") }
     }
 
     @Test
@@ -81,13 +89,13 @@ class MapArtValidatorTest {
         val fakeUsernames = listOf("", "  ", " fake", "fake ", "a".repeat(ValidationLimits.MAX_USERNAME_LENGTH + 1))
 
         // When / Then
-        fakeUsernames.forEach { assertThrows<ValidationFailure> { MapArtValidator.validateUsername(it) } }
+        fakeUsernames.forEach { assertThrows<ValidationFailure> { validator.validateUsername(it) } }
     }
 
     @Test
     fun `if username is at the length limit should accept it`() {
         // When / Then
-        assertDoesNotThrow { MapArtValidator.validateUsername("a".repeat(ValidationLimits.MAX_USERNAME_LENGTH)) }
+        assertDoesNotThrow { validator.validateUsername("a".repeat(ValidationLimits.MAX_USERNAME_LENGTH)) }
     }
 
     @Test
@@ -96,7 +104,7 @@ class MapArtValidatorTest {
         val fakeTitles = listOf("", "Fake Street, Fake City", "a".repeat(ValidationLimits.MAX_TITLE_LENGTH))
 
         // When / Then
-        fakeTitles.forEach { assertDoesNotThrow { MapArtValidator.validateTitle(it) } }
+        fakeTitles.forEach { assertDoesNotThrow { validator.validateTitle(it) } }
     }
 
     @Test
@@ -105,15 +113,15 @@ class MapArtValidatorTest {
         val fakeTitles = listOf("  ", " fake", "fake ", "a".repeat(ValidationLimits.MAX_TITLE_LENGTH + 1))
 
         // When / Then
-        fakeTitles.forEach { assertThrows<ValidationFailure> { MapArtValidator.validateTitle(it) } }
+        fakeTitles.forEach { assertThrows<ValidationFailure> { validator.validateTitle(it) } }
     }
 
     @Test
     fun `if coordinates are at the boundaries should accept them`() {
         // When / Then
         assertDoesNotThrow {
-            MapArtValidator.validateCoordinates(-90.0, -180.0)
-            MapArtValidator.validateCoordinates(90.0, 180.0)
+            validator.validateCoordinates(-90.0, -180.0)
+            validator.validateCoordinates(90.0, 180.0)
         }
     }
 
@@ -124,43 +132,43 @@ class MapArtValidatorTest {
 
         // When / Then
         fakeCoordinates.forEach { (latitude, longitude) ->
-            assertThrows<ValidationFailure> { MapArtValidator.validateCoordinates(latitude, longitude) }
+            assertThrows<ValidationFailure> { validator.validateCoordinates(latitude, longitude) }
         }
     }
 
     @Test
     fun `if dateInMillis is not positive should throw ValidationFailure`() {
         // When / Then
-        assertThrows<ValidationFailure> { MapArtValidator.validateDateInMillis(0) }
-        assertThrows<ValidationFailure> { MapArtValidator.validateDateInMillis(-1) }
-        assertDoesNotThrow { MapArtValidator.validateDateInMillis(1) }
+        assertThrows<ValidationFailure> { validator.validateDateInMillis(0) }
+        assertThrows<ValidationFailure> { validator.validateDateInMillis(-1) }
+        assertDoesNotThrow { validator.validateDateInMillis(1) }
     }
 
     @Test
     fun `if sketchArtType is null should return null`() {
         // When / Then
-        assertNull(MapArtValidator.parseSketchArtType(null))
+        assertNull(validator.parseSketchArtType(null))
     }
 
     @Test
     fun `if sketchArtType is a known name should return it`() {
         // When / Then
-        SketchArtType.entries.forEach { assertEquals(it, MapArtValidator.parseSketchArtType(it.name)) }
+        SketchArtType.entries.forEach { assertEquals(it, validator.parseSketchArtType(it.name)) }
     }
 
     @Test
     fun `if sketchArtType is unknown or in another case should throw ValidationFailure`() {
         // When / Then
-        assertThrows<ValidationFailure> { MapArtValidator.parseSketchArtType("FAKE") }
-        assertThrows<ValidationFailure> { MapArtValidator.parseSketchArtType("default") }
+        assertThrows<ValidationFailure> { validator.parseSketchArtType("FAKE") }
+        assertThrows<ValidationFailure> { validator.parseSketchArtType("default") }
     }
 
     @Test
     fun `if layer color is null or uppercase hex should accept it`() {
         // When / Then
         assertDoesNotThrow {
-            MapArtValidator.validateLayerColor("roadsColor", null)
-            MapArtValidator.validateLayerColor("roadsColor", "#A1B2C3")
+            validator.validateLayerColor("roadsColor", null)
+            validator.validateLayerColor("roadsColor", "#A1B2C3")
         }
     }
 
@@ -171,7 +179,7 @@ class MapArtValidatorTest {
 
         // When / Then
         fakeColors.forEach { fakeColor ->
-            val failure = assertThrows<ValidationFailure> { MapArtValidator.validateLayerColor("roadsColor", fakeColor) }
+            val failure = assertThrows<ValidationFailure> { validator.validateLayerColor("roadsColor", fakeColor) }
             assertEquals("roadsColor must be an uppercase #RRGGBB color.", failure.messageToClient)
         }
     }
@@ -179,7 +187,7 @@ class MapArtValidatorTest {
     @Test
     fun `if email is invalid should keep it for the logs and not send it to the client`() {
         // When
-        val failure = assertThrows<ValidationFailure> { MapArtValidator.validateEmail("fake.private.value") }
+        val failure = assertThrows<ValidationFailure> { validator.validateEmail("fake.private.value") }
 
         // Then
         assertFalse(failure.messageToClient.contains("fake.private.value"))
@@ -192,7 +200,7 @@ class MapArtValidatorTest {
         val fakeTitle = "a".repeat(ValidationLimits.MAX_TITLE_LENGTH + 500)
 
         // When
-        val failure = assertThrows<ValidationFailure> { MapArtValidator.validateTitle(fakeTitle) }
+        val failure = assertThrows<ValidationFailure> { validator.validateTitle(fakeTitle) }
 
         // Then
         val expectedValue = "a".repeat(ValidationLimits.MAX_LOGGED_VALUE_LENGTH)
@@ -202,7 +210,7 @@ class MapArtValidatorTest {
     @Test
     fun `if image is rejected should not log its bytes`() {
         // When
-        val failure = assertThrows<ValidationFailure> { MapArtValidator.validatePngImage(ByteArray(0)) }
+        val failure = assertThrows<ValidationFailure> { validator.validatePngImage(ByteArray(0)) }
 
         // Then
         assertEquals("image must be a PNG.", failure.message)
@@ -212,8 +220,8 @@ class MapArtValidatorTest {
     fun `if image is a PNG within the limits should accept it`() {
         // When / Then
         assertDoesNotThrow {
-            MapArtValidator.validatePngImage(fakePng(width = 1, height = 1))
-            MapArtValidator.validatePngImage(fakePng(width = 1400, height = 1400))
+            validator.validatePngImage(fakePng(width = 1, height = 1))
+            validator.validatePngImage(fakePng(width = 1400, height = 1400))
         }
     }
 
@@ -224,7 +232,7 @@ class MapArtValidatorTest {
 
         // When / Then
         fakeSizes.forEach { (width, height) ->
-            assertThrows<ValidationFailure> { MapArtValidator.validatePngImage(fakePng(width, height)) }
+            assertThrows<ValidationFailure> { validator.validatePngImage(fakePng(width, height)) }
         }
     }
 
@@ -234,8 +242,8 @@ class MapArtValidatorTest {
         val fakeLimit = ValidationLimits.MAX_IMAGE_SIZE_BYTES
 
         // When / Then
-        assertDoesNotThrow { MapArtValidator.validatePngImage(fakePng(size = fakeLimit)) }
-        assertThrows<ValidationFailure> { MapArtValidator.validatePngImage(fakePng(size = fakeLimit + 1)) }
+        assertDoesNotThrow { validator.validatePngImage(fakePng(size = fakeLimit)) }
+        assertThrows<ValidationFailure> { validator.validatePngImage(fakePng(size = fakeLimit + 1)) }
     }
 
     @Test
@@ -246,6 +254,6 @@ class MapArtValidatorTest {
         val fakeImages = listOf(ByteArray(0), fakePng().copyOf(23), fakeWrongSignature, fakeWrongChunk)
 
         // When / Then
-        fakeImages.forEach { assertThrows<ValidationFailure> { MapArtValidator.validatePngImage(it) } }
+        fakeImages.forEach { assertThrows<ValidationFailure> { validator.validatePngImage(it) } }
     }
 }

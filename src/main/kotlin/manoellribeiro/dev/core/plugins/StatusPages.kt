@@ -5,6 +5,7 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
 import io.ktor.server.plugins.BadRequestException
+import io.ktor.server.plugins.UnsupportedMediaTypeException
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.uri
@@ -35,6 +36,13 @@ fun Application.configureStatusPages() {
             val message = "The request body or parameters are invalid."
             errorLogger.logClientError("BadRequest", message, call.operationName())
             call.respond(HttpStatusCode.BadRequest, ErrorResponse(error = "BadRequest", message = message))
+        }
+
+        // Thrown by Ktor when the body's Content-Type isn't the one the route reads (e.g. JSON sent to a multipart route)
+        exception<UnsupportedMediaTypeException> { call, _ ->
+            val message = "The request Content-Type is not supported by this endpoint."
+            errorLogger.logClientError("UnsupportedMediaType", message, call.operationName())
+            call.respond(HttpStatusCode.UnsupportedMediaType, ErrorResponse(error = "UnsupportedMediaType", message = message))
         }
 
         exception<Throwable> { call, cause ->

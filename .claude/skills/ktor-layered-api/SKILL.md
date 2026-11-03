@@ -89,6 +89,11 @@ fun Route.booksRoutes() {
 }
 ```
 
+**Multipart uploads** (`call.receiveMultipart(formFieldLimit = ...)`):
+- A part over `formFieldLimit` cancels the whole call and ends in a 500 that the route can't catch. Check `request.contentLength()` against the limit first and throw a `ValidationFailure`. Keep `formFieldLimit` as the backstop for chunked bodies.
+- Read parts with `part.provider().readBuffer().readByteArray()` and call `part.release()` (`readRemaining` and `dispose` are deprecated in Ktor 3).
+- A JSON part is decoded with the same `Json` instance as `ContentNegotiation` (expose it from `Serialization.kt`). Turn its `IllegalArgumentException` (`SerializationException` is one) into `BadRequestException`, so it answers like a malformed body.
+
 Register every theme in `core/plugins/Routing.kt`:
 
 ```kotlin
@@ -124,6 +129,7 @@ class BooksControllerImpl(
 
 - Validate, don't fix: reject bad input with `ValidationFailure` (400) instead of trimming or changing it silently.
 - Keep validation limits (max lengths, sizes) as named constants in one place.
+- Validators and helpers with behavior are classes injected through the constructor (`XValidator` / `XValidatorImpl`), never `object` singletons, so tests can mock them. `object` is only for constants.
 
 ### 3.3 Repository
 
@@ -386,7 +392,7 @@ class ValidationFailure(messageToClient: String) :
 ```
 
 - One class per meaningful error in `core/models/failures/` (`ValidationFailure` 400, `NotFoundFailure` 404, `ConflictFailure` 409, `<Provider>ApiErrorFailure` 502, `DatabaseErrorFailure` 500, `UnknownErrorFailure` 500).
-- `core/plugins/StatusPages.kt` is the only place that answers errors. It responds `ErrorResponse(error = failure.errorCode, message = failure.messageToClient)` for `Failure`, 400 for Ktor's `BadRequestException` (malformed body), and logs + 500 for any other `Throwable`. It also handles 404 for unknown paths. Clients detect a specific failure by `error`, not by status alone: an unknown path also answers 404.
+- `core/plugins/StatusPages.kt` is the only place that answers errors. It responds `ErrorResponse(error = failure.errorCode, message = failure.messageToClient)` for `Failure`, 400 for Ktor's `BadRequestException` (malformed body), and logs + 500 for any other `Throwable`. It also answers 415 for `UnsupportedMediaTypeException` (e.g. JSON sent to a multipart route), which otherwise falls into the 500 handler, and handles 404 for unknown paths. Clients detect a specific failure by `error`, not by status alone: an unknown path also answers 404.
 - `messageToClient` never contains what the user sent: name the field and the rule, not the value.
 - Always rethrow `CancellationException`.
 
