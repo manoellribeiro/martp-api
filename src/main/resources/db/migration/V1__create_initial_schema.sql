@@ -47,6 +47,11 @@ CREATE TABLE map_arts (
     longitude                      DOUBLE PRECISION NOT NULL,
     date_in_millis                 BIGINT           NOT NULL, -- when the art was created on the device
     image_key                      TEXT             NOT NULL, -- object key in the bucket, URL = publicBaseUrl/image_key
+    -- Worked out by the API from the coordinates when the art is saved (Natural Earth country borders).
+    -- OCEAN when the art isn't on or near any country, UNKNOWN when the lookup failed. Fixed by hand when wrong.
+    continent                      TEXT             NOT NULL,
+    -- ISO 3166-1 alpha-2 code of that country. NULL in the ocean or where Natural Earth has no code (e.g. Somaliland).
+    country_code                   TEXT,
     -- Art style (Android SketchArtType). NULL only for arts created before the apps recorded it.
     sketch_art_type                TEXT,
     -- Name of the palette used (COLORFUL_MAP only). A snapshot of the name, not a foreign key:
@@ -72,6 +77,11 @@ CREATE TABLE map_arts (
     CONSTRAINT map_arts_sketch_art_type_valid CHECK (
         sketch_art_type IN ('DEFAULT', 'POINTILLISM', 'COLORFUL_MAP', 'WATER_FLOW', 'PARTICLE_SYSTEM')
     ),
+    CONSTRAINT map_arts_continent_valid CHECK (
+        continent IN ('AFRICA', 'ANTARCTICA', 'ASIA', 'CENTRAL_AMERICA', 'EUROPE', 'NORTH_AMERICA', 'OCEANIA',
+                      'SOUTH_AMERICA', 'OCEAN', 'UNKNOWN')
+    ),
+    CONSTRAINT map_arts_country_code_format CHECK (country_code ~ '^[A-Z]{2}$'),
     CONSTRAINT map_arts_map_layer_colors_hex CHECK (
         coalesce(map_layer_roads_color, '#000000') ~ '^#[0-9A-F]{6}$' AND
         coalesce(map_layer_building_stroke_color, '#000000') ~ '^#[0-9A-F]{6}$' AND
@@ -102,8 +112,11 @@ CREATE TABLE color_palettes (
     name       TEXT        NOT NULL,
     -- Exactly 6 colors as '#RRGGBB' (uppercase): the colorful map sketch uses indexes 0 to 5.
     colors     TEXT[]      NOT NULL,
-    -- Order shown in the apps. The first palette (lowest position) is the default.
+    -- Order shown in the apps. The first available palette (lowest position) is the default.
     position   INTEGER     NOT NULL,
+    -- Offered by GET /color-palettes. Changed by hand for campaigns (e.g. only the Pride palette
+    -- in June). A palette that isn't available is still accepted when an art is saved.
+    is_available BOOLEAN   NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     is_deleted BOOLEAN     NOT NULL DEFAULT FALSE,
@@ -114,12 +127,30 @@ CREATE TABLE color_palettes (
     CONSTRAINT color_palettes_deleted_at_matches_is_deleted CHECK (is_deleted = (deleted_at IS NOT NULL))
 );
 
-CREATE UNIQUE INDEX color_palettes_name_unique ON color_palettes (name) WHERE NOT is_deleted;
+-- Unique across every row, deleted ones included: saved arts accept any palette that ever
+-- existed, so a name must always mean the same palette.
+CREATE UNIQUE INDEX color_palettes_name_unique ON color_palettes (name);
 CREATE UNIQUE INDEX color_palettes_position_unique ON color_palettes (position) WHERE NOT is_deleted;
 
 CREATE TRIGGER color_palettes_set_audit_columns
     BEFORE UPDATE ON color_palettes
     FOR EACH ROW EXECUTE FUNCTION set_audit_columns();
+
+-- The apps use the first palette as the default, so GET /color-palettes must never be empty.
+-- Checked at commit, so a campaign switch can take several statements in one transaction.
+CREATE FUNCTION check_color_palette_available() RETURNS trigger AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM color_palettes WHERE is_available AND NOT is_deleted) THEN
+        RAISE EXCEPTION 'At least one color palette must be available and not deleted';
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE CONSTRAINT TRIGGER color_palettes_one_available
+    AFTER UPDATE OR DELETE ON color_palettes
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION check_color_palette_available();
 
 -- Same palettes and order as ColorPaletteProvider.kt (Android) and colorPalettes.ts (web)
 INSERT INTO color_palettes (name, colors, position) VALUES

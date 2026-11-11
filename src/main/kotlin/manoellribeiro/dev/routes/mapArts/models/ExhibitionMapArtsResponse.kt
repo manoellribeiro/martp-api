@@ -14,6 +14,10 @@ data class ExhibitionMapArtResponse(
     val latitude: Double,
     val longitude: Double,
     val dateInMillis: Long,
+    /** OCEAN when not on or near any country, UNKNOWN when the lookup failed. */
+    val continent: String,
+    /** ISO 3166-1 alpha-2, null in the ocean. */
+    val countryCode: String?,
     val imageUrl: String,
     val sketchArtType: String?,
     val colorPalette: String?,

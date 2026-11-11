@@ -1,5 +1,6 @@
 package manoellribeiro.dev.core.utils
 
+import manoellribeiro.dev.core.models.Continent
 import manoellribeiro.dev.core.models.SketchArtType
 import manoellribeiro.dev.core.models.failures.ValidationFailure
 import java.nio.ByteBuffer
@@ -8,25 +9,16 @@ import kotlin.uuid.Uuid
 class MapArtValidatorImpl : MapArtValidator {
 
     override fun parseId(id: String): Uuid =
-        Uuid.parseHexDashOrNull(id) ?: throw ValidationFailure("id must be a valid UUID.", rejectedValue = id)
+        Uuid.parseHexDashOrNull(id.trim()) ?: throw ValidationFailure("id must be a valid UUID.", rejectedValue = id)
 
-    override fun validateEmail(email: String?) {
-        if (email == null) return
-        validateOptionalText(field = "email", value = email, maxLength = ValidationLimits.MAX_EMAIL_LENGTH)
-        if (!EMAIL_FORMAT.matches(email)) throw ValidationFailure("email has an invalid format.", rejectedValue = email)
-    }
+    override fun parseEmail(email: String?): String? =
+        parseOptionalText(field = "email", value = email, maxLength = ValidationLimits.MAX_EMAIL_LENGTH)
 
-    override fun validateUsername(username: String?) {
-        if (username == null) return
-        validateOptionalText(field = "username", value = username, maxLength = ValidationLimits.MAX_USERNAME_LENGTH)
-    }
+    override fun parseUsername(username: String?): String? =
+        parseOptionalText(field = "username", value = username, maxLength = ValidationLimits.MAX_USERNAME_LENGTH)
 
-    override fun validateTitle(title: String) {
-        if (title != title.trim()) throw ValidationFailure("title must not have leading or trailing whitespace.", rejectedValue = title)
-        if (title.length > ValidationLimits.MAX_TITLE_LENGTH) {
-            throw ValidationFailure("title must have at most ${ValidationLimits.MAX_TITLE_LENGTH} characters.", rejectedValue = title)
-        }
-    }
+    override fun parseTitle(title: String): String =
+        trimWithinLength(field = "title", value = title, maxLength = ValidationLimits.MAX_TITLE_LENGTH)
 
     override fun validateCoordinates(latitude: Double, longitude: Double) {
         if (latitude !in ValidationLimits.MIN_LATITUDE..ValidationLimits.MAX_LATITUDE) {
@@ -42,15 +34,19 @@ class MapArtValidatorImpl : MapArtValidator {
     }
 
     override fun parseSketchArtType(sketchArtType: String?): SketchArtType? {
-        if (sketchArtType == null) return null
-        return SketchArtType.entries.firstOrNull { it.name == sketchArtType }
+        val name = sketchArtType.trimmedOrNull() ?: return null
+        return SketchArtType.entries.firstOrNull { it.name == name }
             ?: throw ValidationFailure("sketchArtType must be one of ${SketchArtType.entries.joinToString()}.", rejectedValue = sketchArtType)
     }
 
-    override fun validateLayerColor(field: String, color: String?) {
-        if (color != null && !HEX_COLOR_FORMAT.matches(color)) {
+    override fun parseColorPalette(colorPalette: String?): String? = colorPalette.trimmedOrNull()
+
+    override fun parseLayerColor(field: String, color: String?): String? {
+        val trimmed = color.trimmedOrNull() ?: return null
+        if (!HEX_COLOR_FORMAT.matches(trimmed)) {
             throw ValidationFailure("$field must be an uppercase #RRGGBB color.", rejectedValue = color)
         }
+        return trimmed
     }
 
     override fun validatePngImage(image: ByteArray) {
@@ -66,10 +62,22 @@ class MapArtValidatorImpl : MapArtValidator {
         }
     }
 
-    private fun validateOptionalText(field: String, value: String, maxLength: Int) {
-        if (value.isBlank()) throw ValidationFailure("$field must not be blank.", rejectedValue = value)
-        if (value != value.trim()) throw ValidationFailure("$field must not have leading or trailing whitespace.", rejectedValue = value)
-        if (value.length > maxLength) throw ValidationFailure("$field must have at most $maxLength characters.", rejectedValue = value)
+    override fun parseContinent(continent: String?): Continent? {
+        val name = continent.trimmedOrNull() ?: return null
+        return Continent.entries.firstOrNull { it.name == name }
+            ?: throw ValidationFailure("continent must be one of ${Continent.entries.joinToString()}.", rejectedValue = continent)
+    }
+
+    private fun parseOptionalText(field: String, value: String?, maxLength: Int): String? =
+        value?.let { trimWithinLength(field, it, maxLength) }?.ifEmpty { null }
+
+    private fun String?.trimmedOrNull(): String? = this?.trim()?.ifEmpty { null }
+
+    // Only the outer whitespace goes: "Manoel Ribeiro" keeps its inner space
+    private fun trimWithinLength(field: String, value: String, maxLength: Int): String {
+        val trimmed = value.trim()
+        if (trimmed.length > maxLength) throw ValidationFailure("$field must have at most $maxLength characters.", rejectedValue = value)
+        return trimmed
     }
 
     private fun ByteArray.hasPngHeader(): Boolean =
@@ -78,7 +86,6 @@ class MapArtValidatorImpl : MapArtValidator {
             PNG_HEADER_CHUNK_TYPE.indices.all { this[PNG_CHUNK_TYPE_OFFSET + it] == PNG_HEADER_CHUNK_TYPE[it] }
 
     private companion object {
-        val EMAIL_FORMAT = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
         val HEX_COLOR_FORMAT = Regex("^#[0-9A-F]{6}$")
         val PNG_SIGNATURE = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
         val PNG_HEADER_CHUNK_TYPE = "IHDR".toByteArray(Charsets.US_ASCII)

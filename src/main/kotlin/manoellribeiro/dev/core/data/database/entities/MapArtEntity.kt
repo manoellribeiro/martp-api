@@ -1,5 +1,6 @@
 package manoellribeiro.dev.core.data.database.entities
 
+import manoellribeiro.dev.core.models.Continent
 import manoellribeiro.dev.core.models.SketchArtType
 import kotlin.uuid.Uuid
 
@@ -10,6 +11,8 @@ data class MapArtEntity(
     val longitude: Double,
     val dateInMillis: Long,
     val imageKey: String,
+    val continent: Continent,
+    val countryCode: String?,
     val sketchArtType: SketchArtType?,
     val colorPalette: String?,
     val colorsLayers: MapLayersColorsEntity,
@@ -17,7 +20,7 @@ data class MapArtEntity(
     val isApprovedForTheExhibition: Boolean,
 )
 
-/** An art about to be saved: the database decides its artist and approval, the repository its image key. */
+/** An art about to be saved: the database decides its artist and approval, the repository its image key and region. */
 data class NewMapArtEntity(
     val id: Uuid,
     val title: String,

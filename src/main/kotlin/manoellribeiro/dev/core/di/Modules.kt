@@ -13,9 +13,14 @@ import manoellribeiro.dev.core.data.repositories.MartpRepositoryImpl
 import manoellribeiro.dev.core.services.imageStorage.ImageStorageService
 import manoellribeiro.dev.core.services.imageStorage.ImageStorageServiceImpl
 import manoellribeiro.dev.core.services.imageStorage.createS3Client
+import manoellribeiro.dev.core.services.naturalEarth.RegionService
+import manoellribeiro.dev.core.services.naturalEarth.RegionServiceImpl
+import manoellribeiro.dev.core.services.naturalEarth.loadNaturalEarthCountries
 import manoellribeiro.dev.core.services.nominatim.GeocodingService
 import manoellribeiro.dev.core.services.nominatim.GeocodingServiceImpl
 import manoellribeiro.dev.core.services.nominatim.createNominatimHttpClient
+import manoellribeiro.dev.core.utils.GlobeArtsPicker
+import manoellribeiro.dev.core.utils.GlobeArtsPickerImpl
 import manoellribeiro.dev.core.utils.MapArtValidator
 import manoellribeiro.dev.core.utils.MapArtValidatorImpl
 import manoellribeiro.dev.routes.colorPalettes.ColorPalettesController
@@ -27,6 +32,7 @@ import manoellribeiro.dev.routes.mapArts.MapArtsControllerImpl
 import org.koin.dsl.onClose
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
+import kotlin.random.Random
 
 /**
  * Koin modules, one per layer. Every class is bound to its interface (`single<Interface> { Impl(...) }`)
@@ -60,6 +66,11 @@ val servicesModule = module {
     single(named(NOMINATIM_HTTP_CLIENT)) { createNominatimHttpClient(config = get()) } onClose { it?.close() }
     single<ImageStorageService> { ImageStorageServiceImpl(s3Client = get(), config = get(), errorLogger = get()) }
     single<GeocodingService> { GeocodingServiceImpl(httpClient = get(named(NOMINATIM_HTTP_CLIENT)), errorLogger = get()) }
+    // Reads the borders at startup (about a second), not on the first save. A failure never stops the API from starting.
+    single<RegionService>(createdAtStart = true) {
+        val errorLogger = get<ErrorLogger>()
+        RegionServiceImpl(countries = { loadNaturalEarthCountries(errorLogger) }, errorLogger = errorLogger)
+    }
 }
 
 val repositoriesModule = module {
@@ -69,6 +80,7 @@ val repositoriesModule = module {
             mapArtsDao = get(),
             imageStorageService = get(),
             geocodingService = get(),
+            regionService = get(),
             errorLogger = get(),
         )
     }
@@ -76,12 +88,13 @@ val repositoriesModule = module {
 
 val utilsModule = module {
     single<MapArtValidator> { MapArtValidatorImpl() }
+    single<GlobeArtsPicker> { GlobeArtsPickerImpl(random = Random.Default) }
 }
 
 val controllersModule = module {
     single<ColorPalettesController> { ColorPalettesControllerImpl(repository = get()) }
     single<GeocodingController> { GeocodingControllerImpl(repository = get(), mapArtValidator = get(), errorLogger = get()) }
-    single<MapArtsController> { MapArtsControllerImpl(repository = get(), mapArtValidator = get()) }
+    single<MapArtsController> { MapArtsControllerImpl(repository = get(), mapArtValidator = get(), globeArtsPicker = get()) }
 }
 
 fun allModules(appConfig: AppConfig) = listOf(

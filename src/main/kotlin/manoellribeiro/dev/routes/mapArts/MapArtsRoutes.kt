@@ -5,6 +5,7 @@ import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.plugins.BadRequestException
+import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.request.contentLength
 import io.ktor.server.request.receiveMultipart
 import io.ktor.server.response.respond
@@ -15,6 +16,7 @@ import io.ktor.server.routing.route
 import io.ktor.utils.io.readBuffer
 import kotlinx.io.readByteArray
 import manoellribeiro.dev.core.models.failures.ValidationFailure
+import manoellribeiro.dev.core.plugins.MAP_ART_UPLOADS_RATE_LIMIT
 import manoellribeiro.dev.core.plugins.martpJson
 import manoellribeiro.dev.core.utils.ValidationLimits
 import manoellribeiro.dev.routes.mapArts.models.SaveMapArtRequest
@@ -24,13 +26,22 @@ fun Route.mapArtsRoutes() {
     val mapArtsController by inject<MapArtsController>()
 
     route("/map-arts") {
-        post {
-            val upload = call.receiveMapArtUpload()
-            mapArtsController.saveMapArt(upload.request, upload.image)
-            call.respond(HttpStatusCode.Created)
+        rateLimit(MAP_ART_UPLOADS_RATE_LIMIT) {
+            post {
+                val upload = call.receiveMapArtUpload()
+                mapArtsController.saveMapArt(upload.request, upload.image)
+                call.respond(HttpStatusCode.Created)
+            }
         }
         get("/exhibition") {
-            call.respond(HttpStatusCode.OK, mapArtsController.getExhibitionMapArts())
+            val continent = call.request.queryParameters["continent"]
+            call.respond(HttpStatusCode.OK, mapArtsController.getExhibitionMapArts(continent))
+        }
+        get("/exhibition/continents") {
+            call.respond(HttpStatusCode.OK, mapArtsController.getExhibitionContinents())
+        }
+        get("/exhibition/globe") {
+            call.respond(HttpStatusCode.OK, mapArtsController.getGlobeMapArts())
         }
     }
 }

@@ -31,11 +31,12 @@ geocoding:
   userAgent: "$GEOCODING_USER_AGENT:martp-api (https://github.com/manoellribeiro/map-arts)"
 
 appCheck:
-  # Firebase App Check (Play Integrity on Android, reCAPTCHA on the web). Required, no defaults:
-  # the project number is in Firebase console > Project settings, the app IDs too (one per app).
-  projectNumber: "$FIREBASE_PROJECT_NUMBER"
+  # Firebase App Check (Play Integrity on Android, reCAPTCHA on the web). Not secrets: both are
+  # public in the apps (google-services.json). Defaults are the Martp Firebase project.
+  # The project number is in Firebase console > Project settings, the app IDs too (one per app).
+  projectNumber: "$FIREBASE_PROJECT_NUMBER:814915753343"
   # Comma-separated Firebase App IDs allowed to call the API (Android app, web app, exhibition)
-  allowedAppIds: "$FIREBASE_ALLOWED_APP_IDS"
+  allowedAppIds: "$FIREBASE_ALLOWED_APP_IDS:1:814915753343:android:c0fb0c5fd419082eedf64a,1:814915753343:web:93312f94d4f50ed3edf64a"
   jwksUrl: "$FIREBASE_APP_CHECK_JWKS_URL:https://firebaseappcheck.googleapis.com/v1/jwks"
 
 cors:

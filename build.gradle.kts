@@ -8,11 +8,18 @@ group = "manoellribeiro.dev"
 version = "1.0.0-SNAPSHOT"
 
 application {
-    mainClass = "io.ktor.server.netty.EngineMain"
+    // Our main() wraps EngineMain to log startup failures through Logback
+    mainClass = "manoellribeiro.dev.ApplicationKt"
 }
 
 kotlin {
     jvmToolchain(21)
+}
+
+ktor {
+    fatJar {
+        archiveFileName.set("martp-api.jar")
+    }
 }
 
 dependencies {
@@ -26,6 +33,8 @@ dependencies {
     implementation(ktorLibs.server.callLogging)
     implementation(ktorLibs.server.auth)
     implementation(ktorLibs.server.auth.jwt)
+    implementation(ktorLibs.server.rateLimit)
+    implementation(ktorLibs.server.forwardedHeader)
     implementation(ktorLibs.serialization.kotlinx.json)
 
     // Ktor client (outside APIs, e.g. Nominatim)
@@ -44,12 +53,16 @@ dependencies {
     // Image storage
     implementation(libs.aws.sdk.s3)
 
+    // Continent of an art (Natural Earth borders)
+    implementation(libs.jts.core)
+
     // Dependency injection
     implementation(libs.koin.ktor)
     implementation(libs.koin.loggerSlf4j)
 
     // Logging
     implementation(libs.logback.classic)
+    implementation(libs.logstash.logback.encoder) // JSON logs in production (logback-cloud.xml)
 
     // Tests
     testImplementation(platform(libs.junit.bom))

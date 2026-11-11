@@ -1,0 +1,19 @@
+<!-- Production (Cloud Run): one JSON object per line, so Cloud Logging keeps each entry (stack trace
+     included) together, reads its severity, and Error Reporting groups the errors.
+     Selected with JAVA_TOOL_OPTIONS=-Dlogback.configurationFile=logback-cloud.xml -->
+<configuration>
+    <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <fieldNames>
+                <timestamp>time</timestamp>
+                <level>severity</level>
+                <version>[ignore]</version>
+                <levelValue>[ignore]</levelValue>
+            </fieldNames>
+        </encoder>
+    </appender>
+    <root level="INFO">
+        <appender-ref ref="JSON"/>
+    </root>
+    <logger name="io.netty" level="INFO"/>
+</configuration>

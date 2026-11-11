@@ -1,0 +1,88 @@
+name: Deploy To Cloud Run
+
+on:
+  push:
+    tags: '*'
+
+env:
+  PROJECT_ID: martp-2e001
+  REGION: europe-west1
+  SERVICE: martp-api
+  IMAGE: europe-west1-docker.pkg.dev/martp-2e001/martp-api/martp-api:${{ github.ref_name }}
+
+jobs:
+  test:
+    name: Unit Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: 21
+          cache: 'gradle'
+
+      - name: Grant execute permissions for gradlew
+        run: chmod +x gradlew
+
+      - name: Build and run unit tests
+        run: ./gradlew build
+
+  deploy:
+    name: Deploy to Cloud Run
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation: no key stored in GitHub
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Only accepted for manoellribeiro/martp-api on a tag (condition on the Google side)
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: projects/814915753343/locations/global/workloadIdentityPools/github/providers/martp-api
+          service_account: github-deployer@martp-2e001.iam.gserviceaccount.com
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      # The runner is linux/amd64, the architecture Cloud Run needs
+      - name: Build and push the image
+        run: |
+          gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      # Values that locate production live in the repository variables (the repo is public)
+      - name: Write Cloud Run environment variables
+        run: |
+          cat > cloud-run.env.yaml <<EOF
+          DATABASE_URL: "${{ vars.DATABASE_URL }}"
+          DATABASE_USER: "${{ vars.DATABASE_USER }}"
+          DATABASE_MAX_POOL_SIZE: "5"
+          STORAGE_ENDPOINT: "${{ vars.STORAGE_ENDPOINT }}"
+          STORAGE_REGION: "auto"
+          STORAGE_BUCKET: "map-arts"
+          STORAGE_FORCE_PATH_STYLE: "false"
+          STORAGE_PUBLIC_BASE_URL: "https://images.martp.app"
+          CORS_ALLOWED_ORIGINS: "https://martp.app,https://manoellribeiro.github.io"
+          JAVA_TOOL_OPTIONS: "-Dlogback.configurationFile=logback-cloud.xml"
+          EOF
+
+      - name: Deploy
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --project="$PROJECT_ID" --region="$REGION" \
+            --image="$IMAGE" \
+            --allow-unauthenticated \
+            --min-instances=0 --max-instances=1 \
+            --memory=512Mi --cpu=1 --cpu-boost --timeout=300 \
+            --env-vars-file=cloud-run.env.yaml \
+            --set-secrets=DATABASE_PASSWORD=database-password:latest,STORAGE_ACCESS_KEY=storage-access-key:latest,STORAGE_SECRET_KEY=storage-secret-key:latest

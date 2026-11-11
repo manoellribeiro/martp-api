@@ -1,5 +1,6 @@
 package manoellribeiro.dev.core.data.database.tables
 
+import manoellribeiro.dev.core.models.Continent
 import manoellribeiro.dev.core.models.SketchArtType
 import org.jetbrains.exposed.v1.core.Table
 
@@ -10,6 +11,8 @@ object MapArtsTable : Table("map_arts") {
     val longitude = double("longitude")
     val dateInMillis = long("date_in_millis")
     val imageKey = text("image_key")
+    val continent = enumerationByName<Continent>("continent", length = 32)
+    val countryCode = text("country_code").nullable()
     val sketchArtType = enumerationByName<SketchArtType>("sketch_art_type", length = 32).nullable()
     val colorPalette = text("color_palette").nullable()
     val mapLayerRoadsColor = text("map_layer_roads_color").nullable()

@@ -4,14 +4,17 @@ import kotlinx.coroutines.CancellationException
 import manoellribeiro.dev.core.data.database.daos.ColorPalettesDao
 import manoellribeiro.dev.core.data.database.daos.MapArtsDao
 import manoellribeiro.dev.core.data.database.entities.ColorPaletteEntity
+import manoellribeiro.dev.core.data.database.entities.ContinentTotalEntity
 import manoellribeiro.dev.core.data.database.entities.NewMapArtEntity
 import manoellribeiro.dev.core.logging.ErrorLogger
 import manoellribeiro.dev.core.models.Address
+import manoellribeiro.dev.core.models.Continent
 import manoellribeiro.dev.core.models.ExhibitionMapArt
 import manoellribeiro.dev.core.models.failures.DatabaseErrorFailure
 import manoellribeiro.dev.core.models.failures.Failure
 import manoellribeiro.dev.core.models.failures.MapArtAlreadyExistsFailure
 import manoellribeiro.dev.core.services.imageStorage.ImageStorageService
+import manoellribeiro.dev.core.services.naturalEarth.RegionService
 import manoellribeiro.dev.core.services.nominatim.GeocodingService
 
 class MartpRepositoryImpl(
@@ -19,11 +22,15 @@ class MartpRepositoryImpl(
     private val mapArtsDao: MapArtsDao,
     private val imageStorageService: ImageStorageService,
     private val geocodingService: GeocodingService,
+    private val regionService: RegionService,
     private val errorLogger: ErrorLogger,
 ) : MartpRepository {
 
     override suspend fun getColorPalettes(): List<ColorPaletteEntity> =
-        databaseCall("MartpRepository.getColorPalettes") { colorPalettesDao.getAll() }
+        databaseCall("MartpRepository.getColorPalettes") { colorPalettesDao.getAvailable() }
+
+    override suspend fun colorPaletteExists(name: String): Boolean =
+        databaseCall("MartpRepository.colorPaletteExists") { colorPalettesDao.existsByName(name) }
 
     override suspend fun reverseGeocode(latitude: Double, longitude: Double, language: String?): Address =
         geocodingService.reverseGeocode(latitude, longitude, language)
@@ -35,11 +42,13 @@ class MartpRepositoryImpl(
             throw MapArtAlreadyExistsFailure(originalExceptionMessage = null)
         }
 
+        // Never throws: a failed lookup is saved as UNKNOWN
+        val region = regionService.findRegion(mapArt.latitude, mapArt.longitude)
         val imageKey = "${mapArt.id}.png"
         imageStorageService.upload(imageKey, image)
 
         val inserted = try {
-            databaseCall(operation) { mapArtsDao.insertWithUser(mapArt, imageKey, email, username) }
+            databaseCall(operation) { mapArtsDao.insertWithUser(mapArt, imageKey, region, email, username) }
         } catch (failure: DatabaseErrorFailure) {
             deleteImageAfterFailedInsert(imageKey)
             throw failure
@@ -48,8 +57,8 @@ class MartpRepositoryImpl(
         if (!inserted) throw MapArtAlreadyExistsFailure(originalExceptionMessage = null)
     }
 
-    override suspend fun getExhibitionMapArts(): List<ExhibitionMapArt> =
-        databaseCall("MartpRepository.getExhibitionMapArts") { mapArtsDao.getApprovedForExhibition() }
+    override suspend fun getExhibitionMapArts(continent: Continent?): List<ExhibitionMapArt> =
+        databaseCall("MartpRepository.getExhibitionMapArts") { mapArtsDao.getApprovedForExhibition(continent) }
             .map {
                 ExhibitionMapArt(
                     mapArt = it.mapArt,
@@ -57,6 +66,9 @@ class MartpRepositoryImpl(
                     imageUrl = imageStorageService.publicUrl(it.mapArt.imageKey),
                 )
             }
+
+    override suspend fun getExhibitionContinents(): List<ContinentTotalEntity> =
+        databaseCall("MartpRepository.getExhibitionContinents") { mapArtsDao.getApprovedTotalsByContinent() }
 
     private suspend fun deleteImageAfterFailedInsert(imageKey: String) {
         try {

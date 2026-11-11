@@ -51,6 +51,12 @@ fun Application.configureStatusPages() {
             call.respond(failure.statusCode, ErrorResponse(failure.errorCode, failure.messageToClient))
         }
 
+        status(HttpStatusCode.TooManyRequests) { call, status ->
+            val message = "Too many requests. Try again later."
+            errorLogger.logClientError("TooManyRequests", message, call.operationName())
+            call.respond(status, ErrorResponse(error = "TooManyRequests", message = message))
+        }
+
         status(HttpStatusCode.NotFound) { call, status ->
             val message = "This endpoint does not exist."
             errorLogger.logClientError("NotFound", message, call.operationName())

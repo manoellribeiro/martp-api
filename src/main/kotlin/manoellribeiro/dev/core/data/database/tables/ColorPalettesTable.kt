@@ -7,6 +7,7 @@ object ColorPalettesTable : Table("color_palettes") {
     val name = text("name")
     val colors = array<String>("colors")
     val position = integer("position")
+    val isAvailable = bool("is_available")
     val isDeleted = bool("is_deleted")
 
     override val primaryKey = PrimaryKey(id)

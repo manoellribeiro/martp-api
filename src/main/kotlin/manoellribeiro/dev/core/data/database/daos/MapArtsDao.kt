@@ -1,7 +1,10 @@
 package manoellribeiro.dev.core.data.database.daos
 
+import manoellribeiro.dev.core.data.database.entities.ContinentTotalEntity
 import manoellribeiro.dev.core.data.database.entities.ExhibitionMapArtEntity
 import manoellribeiro.dev.core.data.database.entities.NewMapArtEntity
+import manoellribeiro.dev.core.models.Continent
+import manoellribeiro.dev.core.models.Region
 import kotlin.uuid.Uuid
 
 interface MapArtsDao {
@@ -12,7 +15,11 @@ interface MapArtsDao {
      * Saves the art and its user (matched by the pair, or created) in one transaction.
      * Returns false, saving nothing, if another art already has this id.
      */
-    suspend fun insertWithUser(mapArt: NewMapArtEntity, imageKey: String, email: String?, username: String?): Boolean
+    suspend fun insertWithUser(mapArt: NewMapArtEntity, imageKey: String, region: Region, email: String?, username: String?): Boolean
 
-    suspend fun getApprovedForExhibition(): List<ExhibitionMapArtEntity>
+    /** [continent] null = every continent. */
+    suspend fun getApprovedForExhibition(continent: Continent?): List<ExhibitionMapArtEntity>
+
+    /** Approved arts that aren't deleted, per continent. Continents without arts are left out. Biggest total first, then by name. */
+    suspend fun getApprovedTotalsByContinent(): List<ContinentTotalEntity>
 }

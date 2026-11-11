@@ -3,18 +3,23 @@ package manoellribeiro.dev.core.data.database.daos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import manoellribeiro.dev.core.data.database.MartpDatabase
+import manoellribeiro.dev.core.data.database.entities.ContinentTotalEntity
 import manoellribeiro.dev.core.data.database.entities.ExhibitionMapArtEntity
 import manoellribeiro.dev.core.data.database.entities.MapArtEntity
 import manoellribeiro.dev.core.data.database.entities.MapLayersColorsEntity
 import manoellribeiro.dev.core.data.database.entities.NewMapArtEntity
 import manoellribeiro.dev.core.data.database.tables.MapArtsTable
 import manoellribeiro.dev.core.data.database.tables.UsersTable
+import manoellribeiro.dev.core.models.Continent
+import manoellribeiro.dev.core.models.Region
 import org.jetbrains.exposed.v1.core.JoinType
+import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.QueryParameter
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.Transaction
 import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.core.count
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.isNotDistinctFrom
 import org.jetbrains.exposed.v1.jdbc.insertIgnore
@@ -38,6 +43,7 @@ class MapArtsDaoImpl(
     override suspend fun insertWithUser(
         mapArt: NewMapArtEntity,
         imageKey: String,
+        region: Region,
         email: String?,
         username: String?,
     ): Boolean = withContext(Dispatchers.IO) {
@@ -52,6 +58,8 @@ class MapArtsDaoImpl(
                 it[longitude] = mapArt.longitude
                 it[dateInMillis] = mapArt.dateInMillis
                 it[MapArtsTable.imageKey] = imageKey
+                it[continent] = region.continent
+                it[countryCode] = region.countryCode
                 it[sketchArtType] = mapArt.sketchArtType
                 it[colorPalette] = mapArt.colorPalette
                 it[mapLayerRoadsColor] = mapArt.colorsLayers.roadsColor
@@ -67,7 +75,7 @@ class MapArtsDaoImpl(
         }
     }
 
-    override suspend fun getApprovedForExhibition(): List<ExhibitionMapArtEntity> = withContext(Dispatchers.IO) {
+    override suspend fun getApprovedForExhibition(continent: Continent?): List<ExhibitionMapArtEntity> = withContext(Dispatchers.IO) {
         suspendTransaction(db = martpDatabase.database) {
             MapArtsTable
                 .join(
@@ -78,9 +86,22 @@ class MapArtsDaoImpl(
                     additionalConstraint = { UsersTable.isDeleted eq false },
                 )
                 .select(MapArtsTable.columns + UsersTable.username)
-                .where { (MapArtsTable.isApprovedForTheExhibition eq true) and (MapArtsTable.isDeleted eq false) }
+                .where {
+                    if (continent == null) isInExhibition() else isInExhibition() and (MapArtsTable.continent eq continent)
+                }
                 .orderBy(MapArtsTable.dateInMillis, SortOrder.DESC)
                 .map { ExhibitionMapArtEntity(mapArt = it.toMapArtEntity(), artistUsername = it[UsersTable.username]) }
+        }
+    }
+
+    override suspend fun getApprovedTotalsByContinent(): List<ContinentTotalEntity> = withContext(Dispatchers.IO) {
+        suspendTransaction(db = martpDatabase.database) {
+            val total = MapArtsTable.id.count()
+            MapArtsTable.select(MapArtsTable.continent, total)
+                .where { isInExhibition() }
+                .groupBy(MapArtsTable.continent)
+                .orderBy(total to SortOrder.DESC, MapArtsTable.continent to SortOrder.ASC)
+                .map { ContinentTotalEntity(continent = it[MapArtsTable.continent], total = it[total]) }
         }
     }
 
@@ -99,6 +120,10 @@ class MapArtsDaoImpl(
     }
 }
 
+/** Approved and not deleted: the only arts the exhibition may see. */
+private fun isInExhibition(): Op<Boolean> =
+    (MapArtsTable.isApprovedForTheExhibition eq true) and (MapArtsTable.isDeleted eq false)
+
 private fun ResultRow.toMapArtEntity() = MapArtEntity(
     id = this[MapArtsTable.id],
     title = this[MapArtsTable.title],
@@ -106,6 +131,8 @@ private fun ResultRow.toMapArtEntity() = MapArtEntity(
     longitude = this[MapArtsTable.longitude],
     dateInMillis = this[MapArtsTable.dateInMillis],
     imageKey = this[MapArtsTable.imageKey],
+    continent = this[MapArtsTable.continent],
+    countryCode = this[MapArtsTable.countryCode],
     sketchArtType = this[MapArtsTable.sketchArtType],
     colorPalette = this[MapArtsTable.colorPalette],
     colorsLayers = MapLayersColorsEntity(

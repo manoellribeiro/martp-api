@@ -1,5 +1,6 @@
 package manoellribeiro.dev.core.utils
 
+import manoellribeiro.dev.core.models.Continent
 import manoellribeiro.dev.core.models.SketchArtType
 import manoellribeiro.dev.core.models.failures.ValidationFailure
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -49,71 +50,81 @@ class MapArtValidatorImplTest {
     }
 
     @Test
-    fun `if email and username are null should accept them`() {
+    fun `if email and username are null should return null`() {
         // When / Then
-        assertDoesNotThrow {
-            validator.validateEmail(null)
-            validator.validateUsername(null)
+        assertNull(validator.parseEmail(null))
+        assertNull(validator.parseUsername(null))
+    }
+
+    @Test
+    fun `if email or username is empty or only whitespace should return null`() {
+        // Given
+        val fakeValues = listOf("", "  ", "\t\n")
+
+        // When / Then
+        fakeValues.forEach {
+            assertNull(validator.parseEmail(it))
+            assertNull(validator.parseUsername(it))
         }
     }
 
     @Test
-    fun `if email has a valid format should accept it`() {
-        // When / Then
-        assertDoesNotThrow { validator.validateEmail("fake.user@example.com") }
-    }
-
-    @Test
-    fun `if email is invalid should throw ValidationFailure`() {
+    fun `if email has any format should return it`() {
         // Given
-        val fakeEmails = listOf("", "  ", " fake@example.com", "fake@example.com ", "fake", "fake@example", "a@b@c.com", "fake user@example.com")
+        val fakeEmails = listOf("fake.user@example.com", "fake", "fake@example", "a@b@c.com", "fake user@example.com")
 
         // When / Then
-        fakeEmails.forEach { assertThrows<ValidationFailure> { validator.validateEmail(it) } }
+        fakeEmails.forEach { assertEquals(it, validator.parseEmail(it)) }
     }
 
     @Test
-    fun `if email is at the length limit should accept it and above it should throw ValidationFailure`() {
+    fun `if email or username has outer whitespace should return it trimmed`() {
+        // When / Then
+        assertEquals("fake@example.com", validator.parseEmail("  fake@example.com \n"))
+        assertEquals("Fake User", validator.parseUsername(" Fake User  "))
+    }
+
+    @Test
+    fun `if email is at the length limit after trimming should accept it and above it should throw ValidationFailure`() {
         // Given
-        val fakeDomain = "@example.com"
-        val fakeLocalPart = "a".repeat(ValidationLimits.MAX_EMAIL_LENGTH - fakeDomain.length)
+        val fakeEmail = "a".repeat(ValidationLimits.MAX_EMAIL_LENGTH)
 
         // When / Then
-        assertDoesNotThrow { validator.validateEmail(fakeLocalPart + fakeDomain) }
-        assertThrows<ValidationFailure> { validator.validateEmail("a$fakeLocalPart$fakeDomain") }
+        assertEquals(fakeEmail, validator.parseEmail("  $fakeEmail  "))
+        assertThrows<ValidationFailure> { validator.parseEmail("a$fakeEmail") }
     }
 
     @Test
-    fun `if username is invalid should throw ValidationFailure`() {
+    fun `if username is at the length limit after trimming should accept it and above it should throw ValidationFailure`() {
         // Given
-        val fakeUsernames = listOf("", "  ", " fake", "fake ", "a".repeat(ValidationLimits.MAX_USERNAME_LENGTH + 1))
+        val fakeUsername = "a".repeat(ValidationLimits.MAX_USERNAME_LENGTH)
 
         // When / Then
-        fakeUsernames.forEach { assertThrows<ValidationFailure> { validator.validateUsername(it) } }
+        assertEquals(fakeUsername, validator.parseUsername("  $fakeUsername  "))
+        assertThrows<ValidationFailure> { validator.parseUsername("a$fakeUsername") }
     }
 
     @Test
-    fun `if username is at the length limit should accept it`() {
-        // When / Then
-        assertDoesNotThrow { validator.validateUsername("a".repeat(ValidationLimits.MAX_USERNAME_LENGTH)) }
-    }
-
-    @Test
-    fun `if title is empty or normal or at the limit should accept it`() {
+    fun `if title is empty or normal or at the limit should return it`() {
         // Given
         val fakeTitles = listOf("", "Fake Street, Fake City", "a".repeat(ValidationLimits.MAX_TITLE_LENGTH))
 
         // When / Then
-        fakeTitles.forEach { assertDoesNotThrow { validator.validateTitle(it) } }
+        fakeTitles.forEach { assertEquals(it, validator.parseTitle(it)) }
     }
 
     @Test
-    fun `if title is only whitespace or has outer whitespace or is too long should throw ValidationFailure`() {
-        // Given
-        val fakeTitles = listOf("  ", " fake", "fake ", "a".repeat(ValidationLimits.MAX_TITLE_LENGTH + 1))
-
+    fun `if title has outer whitespace should return it trimmed keeping the inner spaces`() {
         // When / Then
-        fakeTitles.forEach { assertThrows<ValidationFailure> { validator.validateTitle(it) } }
+        assertEquals("Manoel Ribeiro", validator.parseTitle("  Manoel Ribeiro \t"))
+        assertEquals("", validator.parseTitle("   "))
+        assertEquals("a".repeat(ValidationLimits.MAX_TITLE_LENGTH), validator.parseTitle(" " + "a".repeat(ValidationLimits.MAX_TITLE_LENGTH) + " "))
+    }
+
+    @Test
+    fun `if title is too long after trimming should throw ValidationFailure`() {
+        // When / Then
+        assertThrows<ValidationFailure> { validator.parseTitle("a".repeat(ValidationLimits.MAX_TITLE_LENGTH + 1)) }
     }
 
     @Test
@@ -164,34 +175,69 @@ class MapArtValidatorImplTest {
     }
 
     @Test
-    fun `if layer color is null or uppercase hex should accept it`() {
+    fun `if sketchArtType has outer whitespace should trim it and if blank should return null`() {
         // When / Then
-        assertDoesNotThrow {
-            validator.validateLayerColor("roadsColor", null)
-            validator.validateLayerColor("roadsColor", "#A1B2C3")
-        }
+        assertEquals(SketchArtType.COLORFUL_MAP, validator.parseSketchArtType("  COLORFUL_MAP "))
+        assertNull(validator.parseSketchArtType(""))
+        assertNull(validator.parseSketchArtType("   "))
+    }
+
+    @Test
+    fun `if id has outer whitespace should parse it`() {
+        // Given
+        val fakeId = "123e4567-e89b-12d3-a456-426614174000"
+
+        // When / Then
+        assertEquals(fakeId, validator.parseId("  $fakeId \n").toString())
+    }
+
+    @Test
+    fun `if color palette has outer whitespace should trim it and if blank should return null`() {
+        // When / Then
+        assertEquals("Fake Palette", validator.parseColorPalette(" Fake Palette  "))
+        assertNull(validator.parseColorPalette(null))
+        assertNull(validator.parseColorPalette(""))
+        assertNull(validator.parseColorPalette("  "))
+    }
+
+    @Test
+    fun `if layer color is uppercase hex should return it trimmed`() {
+        // When / Then
+        assertEquals("#A1B2C3", validator.parseLayerColor("roadsColor", "#A1B2C3"))
+        assertEquals("#A1B2C3", validator.parseLayerColor("roadsColor", "  #A1B2C3 "))
+    }
+
+    @Test
+    fun `if layer color is null or blank should return null`() {
+        // When / Then
+        assertNull(validator.parseLayerColor("roadsColor", null))
+        assertNull(validator.parseLayerColor("roadsColor", ""))
+        assertNull(validator.parseLayerColor("roadsColor", "   "))
     }
 
     @Test
     fun `if layer color is invalid should throw ValidationFailure without the value`() {
         // Given
-        val fakeColors = listOf("#a1b2c3", "A1B2C3", "#A1B2C", "#A1B2C3FF", "")
+        val fakeColors = listOf("#a1b2c3", "A1B2C3", "#A1B2C", "#A1B2C3FF", "#A1 B2C3")
 
         // When / Then
         fakeColors.forEach { fakeColor ->
-            val failure = assertThrows<ValidationFailure> { validator.validateLayerColor("roadsColor", fakeColor) }
+            val failure = assertThrows<ValidationFailure> { validator.parseLayerColor("roadsColor", fakeColor) }
             assertEquals("roadsColor must be an uppercase #RRGGBB color.", failure.messageToClient)
         }
     }
 
     @Test
-    fun `if email is invalid should keep it for the logs and not send it to the client`() {
+    fun `if a username is rejected should keep it for the logs and not send it to the client`() {
+        // Given
+        val fakeUsername = "fake.private.value".repeat(10)
+
         // When
-        val failure = assertThrows<ValidationFailure> { validator.validateEmail("fake.private.value") }
+        val failure = assertThrows<ValidationFailure> { validator.parseUsername(fakeUsername) }
 
         // Then
         assertFalse(failure.messageToClient.contains("fake.private.value"))
-        assertEquals("email has an invalid format. Rejected value: \"fake.private.value\"", failure.message)
+        assertEquals("username must have at most ${ValidationLimits.MAX_USERNAME_LENGTH} characters. Rejected value: \"$fakeUsername\"", failure.message)
     }
 
     @Test
@@ -200,7 +246,7 @@ class MapArtValidatorImplTest {
         val fakeTitle = "a".repeat(ValidationLimits.MAX_TITLE_LENGTH + 500)
 
         // When
-        val failure = assertThrows<ValidationFailure> { validator.validateTitle(fakeTitle) }
+        val failure = assertThrows<ValidationFailure> { validator.parseTitle(fakeTitle) }
 
         // Then
         val expectedValue = "a".repeat(ValidationLimits.MAX_LOGGED_VALUE_LENGTH)
@@ -255,5 +301,27 @@ class MapArtValidatorImplTest {
 
         // When / Then
         fakeImages.forEach { assertThrows<ValidationFailure> { validator.validatePngImage(it) } }
+    }
+
+    @Test
+    fun `if continent is null or blank should return null`() {
+        // When / Then
+        assertNull(validator.parseContinent(null))
+        assertNull(validator.parseContinent("   "))
+    }
+
+    @Test
+    fun `if continent is a known name should return it trimmed`() {
+        // When / Then
+        Continent.entries.forEach { assertEquals(it, validator.parseContinent(" ${it.name} ")) }
+    }
+
+    @Test
+    fun `if continent is unknown or in another case should throw ValidationFailure`() {
+        // Given
+        val fakeValues = listOf("FAKE", "europe", "Central America")
+
+        // When / Then
+        fakeValues.forEach { assertThrows<ValidationFailure> { validator.parseContinent(it) } }
     }
 }

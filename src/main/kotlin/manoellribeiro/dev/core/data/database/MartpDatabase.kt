@@ -27,6 +27,10 @@ class MartpDatabase(
                 username = config.user
                 password = config.password
                 maximumPoolSize = config.maxPoolSize
+                // Neon (production) sleeps after 5 minutes without queries and bills awake time:
+                // don't keep idle connections open. The first query after a pause opens a new one.
+                minimumIdle = 0
+                idleTimeout = 60_000
                 // Exposed opens and commits its own transactions
                 isAutoCommit = false
                 transactionIsolation = "TRANSACTION_REPEATABLE_READ"
