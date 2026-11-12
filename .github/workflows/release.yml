@@ -53,11 +53,12 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v3
 
-      # The runner is linux/amd64, the architecture Cloud Run needs
+      # The runner is linux/amd64, the architecture Cloud Run needs. No provenance attestation:
+      # it would add extra versions that the "keep 2 newest" cleanup rule counts.
       - name: Build and push the image
         run: |
           gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
-          docker build -t "$IMAGE" .
+          docker build --provenance=false -t "$IMAGE" .
           docker push "$IMAGE"
 
       # Values that locate production live in the repository variables (the repo is public)
